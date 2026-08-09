@@ -1,0 +1,130 @@
+import { useLocalSearchParams } from 'expo-router';
+import { StyleSheet, View } from 'react-native';
+
+import { RoutePreview } from '@/components/route-preview';
+import { ThemedText } from '@/components/themed-text';
+import { Card } from '@/components/ui/card';
+import { ScoreBadge, scoreColor } from '@/components/ui/score-badge';
+import { Screen } from '@/components/ui/screen';
+import { Stat, StatRow } from '@/components/ui/stat';
+import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+import { getDrive } from '@/lib/demo-data';
+import { formatDuration, formatMiles, formatMph, formatWhen } from '@/lib/format';
+import type { DriveEvent } from '@/types/drive';
+
+const EVENT_LABELS: Record<DriveEvent['type'], string> = {
+  speeding: 'Speeding',
+  hard_brake: 'Hard brake',
+  rapid_accel: 'Rapid acceleration',
+  phone_distraction: 'Phone distraction',
+};
+
+/** Shared by both interfaces — a parent and their teen see the same trip detail. */
+export default function DriveDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const drive = getDrive(id);
+
+  if (!drive) {
+    return (
+      <Screen title="Drive not found" subtitle="This trip is no longer available.">
+        <Card>
+          <ThemedText type="small" themeColor="textSecondary">
+            The drive may have been deleted, or it belongs to another account.
+          </ThemedText>
+        </Card>
+      </Screen>
+    );
+  }
+
+  const duration = drive.endedAt ? drive.endedAt - drive.startedAt : 0;
+
+  return (
+    <Screen title={formatWhen(drive.startedAt)} subtitle={`${drive.driverName}'s drive`}>
+      <Card>
+        <RoutePreview route={drive.route} height={220} />
+        <StatRow>
+          <Stat label="Distance" value={formatMiles(drive.distanceMeters)} unit="mi" />
+          <Stat label="Duration" value={formatDuration(duration)} />
+          <Stat label="Top speed" value={formatMph(drive.topSpeed)} unit="mph" />
+        </StatRow>
+        <StatRow>
+          <Stat label="Avg speed" value={formatMph(drive.avgSpeed)} unit="mph" />
+          <Stat
+            label="Safety score"
+            value={`${drive.safetyScore}`}
+            valueColor={scoreColor(drive.safetyScore)}
+          />
+          <Stat label="GPS points" value={`${drive.route.length}`} />
+        </StatRow>
+      </Card>
+
+      <Card title="Events" meta={`${drive.events.length} flagged`}>
+        {drive.events.length === 0 ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            Clean drive — nothing flagged.
+          </ThemedText>
+        ) : (
+          <View style={styles.events}>
+            {drive.events.map((event) => (
+              <EventRow key={event.id} event={event} />
+            ))}
+          </View>
+        )}
+      </Card>
+
+      <Card title="Overall">
+        <View style={styles.overall}>
+          <ScoreBadge score={drive.safetyScore} />
+          <ThemedText type="small" themeColor="textSecondary" style={styles.overallText}>
+            Scores start at 100 and drop for each flagged event, weighted by severity.
+          </ThemedText>
+        </View>
+      </Card>
+    </Screen>
+  );
+}
+
+function EventRow({ event }: { event: DriveEvent }) {
+  const theme = useTheme();
+
+  return (
+    <View style={styles.eventRow}>
+      <View style={styles.eventText}>
+        <ThemedText type="small" style={{ color: theme.warning }}>
+          {EVENT_LABELS[event.type]}
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {event.detail}
+        </ThemedText>
+      </View>
+      <ThemedText type="small" themeColor="textSecondary">
+        {new Date(event.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+      </ThemedText>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  events: {
+    gap: Spacing.three,
+  },
+  eventRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  eventText: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  overall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  overallText: {
+    flex: 1,
+  },
+});
