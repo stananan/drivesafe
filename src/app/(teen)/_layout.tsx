@@ -1,4 +1,5 @@
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Icon, Label, NativeTabs, VectorIcon } from 'expo-router/unstable-native-tabs';
 import { useColorScheme } from 'react-native';
 
 import { Colors } from '@/constants/theme';
@@ -6,6 +7,9 @@ import { Colors } from '@/constants/theme';
 /**
  * The teen's app is built around one button: start the drive. History and
  * profile sit behind it.
+ *
+ * iOS renders SF Symbols natively; Android has no equivalent name lookup, so it
+ * gets the matching Material icon through `androidSrc`.
  */
 export default function TeenLayout() {
   const scheme = useColorScheme();
@@ -15,20 +19,29 @@ export default function TeenLayout() {
     <NativeTabs
       backgroundColor={colors.background}
       indicatorColor={colors.backgroundSelected}
-      labelStyle={{ selected: { color: colors.tint } }}>
+      labelStyle={{ color: colors.textSecondary }}>
       <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>Drive</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="car.fill" md="directions_car" />
+        <Label>Drive</Label>
+        <Icon
+          sf="car.fill"
+          androidSrc={<VectorIcon family={MaterialIcons} name="directions-car" />}
+        />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="history">
-        <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="clock.arrow.circlepath" md="history" />
+        <Label>History</Label>
+        <Icon
+          sf="clock.arrow.circlepath"
+          androidSrc={<VectorIcon family={MaterialIcons} name="history" />}
+        />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="profile">
-        <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="person.crop.circle" md="person" />
+        <Label>Profile</Label>
+        <Icon
+          sf="person.crop.circle"
+          androidSrc={<VectorIcon family={MaterialIcons} name="person" />}
+        />
       </NativeTabs.Trigger>
     </NativeTabs>
   );

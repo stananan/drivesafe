@@ -52,7 +52,7 @@ both roles. A teen should never wonder what their parent is being shown.
 
 ### Phase 0 — Project skeleton ✅ *done*
 
-- Expo SDK 57 / React Native 0.86 / expo-router 57, TypeScript strict.
+- Expo SDK 54 / React Native 0.81 / expo-router 6, TypeScript strict.
 - Role gate persisted to AsyncStorage, with both tab interfaces behind it.
 - Real GPS recording via `expo-location` (`src/lib/use-drive-tracker.ts`).
 - Supabase client wired lazily; demo data behind the same function signatures
@@ -141,6 +141,20 @@ constraint. It is what separates this from spyware.
 ---
 
 ## Known constraints
+
+**The project is pinned to SDK 54 on purpose.** Newer SDKs exist (57 is current),
+but the App Store served both of our phones Expo Go **54.x**, and a modern Expo
+Go client supports exactly one SDK — a project on 57 reports "incompatible with
+this version of Expo Go" and refuses to open. Matching the client is what makes
+the QR-code demo work on our actual hardware.
+
+Only raise the SDK after confirming the Expo Go on the demo phones has moved
+too (check the version in the Expo Go app, or `npx expo-doctor` after bumping).
+Upgrading blind will break the demo. `npx expo install --fix` realigns every
+dependency after an SDK change; the API differences that bit us going 57 → 54
+were `ThemeProvider` living in `@react-navigation/native`, `NativeTabs` exposing
+`Icon`/`Label` as standalone exports rather than `NativeTabs.Trigger.*`, and
+`useColorScheme` returning `null` instead of `'unspecified'`.
 
 **Expo Go vs. development build.** This phase runs in Expo Go so it opens from a
 QR code on any phone with no build step. That rules out, for now:
