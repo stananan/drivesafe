@@ -51,7 +51,7 @@ export default function DriveScreen() {
         <View style={styles.speedBlock}>
           <ThemedText
             style={[styles.speed, { color: isRecording ? theme.tint : theme.textSecondary }]}>
-            {isRecording ? formatMph(tracker.speed) : '--'}
+            {isRecording ? formatMph(tracker.speed) : '0'}
           </ThemedText>
           <ThemedText type="smallBold" themeColor="textSecondary">
             MPH
@@ -138,8 +138,10 @@ export default function DriveScreen() {
 function UpcomingRow({ label, detail }: { label: string; detail: string }) {
   return (
     <View style={styles.upcomingRow}>
-      <ThemedText type="small">{label}</ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
+      <ThemedText type="small" style={styles.upcomingLabel}>
+        {label}
+      </ThemedText>
+      <ThemedText type="small" themeColor="textSecondary" style={styles.upcomingDetail}>
         {detail}
       </ThemedText>
     </View>
@@ -164,7 +166,15 @@ const styles = StyleSheet.create({
   upcomingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: Spacing.two,
+    alignItems: 'flex-start',
+    gap: Spacing.three,
+  },
+  upcomingLabel: {
+    flexShrink: 1,
+  },
+  // Wraps instead of running past the card edge on narrow phones.
+  upcomingDetail: {
+    flexShrink: 1,
+    textAlign: 'right',
   },
 });
