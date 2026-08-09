@@ -13,25 +13,36 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
 /**
- * Walks a straight line between two coordinates, emitting a fix every few
- * seconds. Good enough to draw a route and exercise the summary math.
+ * Walks between two coordinates, emitting a fix every few seconds. A straight
+ * interpolation reads as obviously fake, so the path is bowed perpendicular to
+ * the direction of travel — enough to look like a road on the route preview.
  */
 function synthesizeRoute(
   from: { lat: number; lon: number },
   to: { lat: number; lon: number },
   startedAt: number,
   samples: number,
-  cruiseMps: number
+  cruiseMps: number,
+  /** Bow depth as a fraction of trip length. Negative curves the other way. */
+  curve = 0.12
 ): DrivePoint[] {
+  const dLat = to.lat - from.lat;
+  const dLon = to.lon - from.lon;
+
   return Array.from({ length: samples }, (_, i) => {
     const progress = i / (samples - 1);
     // Ease in and out so the speed trace is not a flat line.
     const speedFactor = Math.sin(progress * Math.PI) * 0.45 + 0.7;
+    // Zero at both ends, widest in the middle.
+    const bow = Math.sin(progress * Math.PI) * curve;
+    // Wobble keeps the curve from looking like a perfect arc.
+    const wobble = Math.sin(progress * Math.PI * 5) * curve * 0.15;
 
     return {
       t: startedAt + i * 4000,
-      lat: from.lat + (to.lat - from.lat) * progress,
-      lon: from.lon + (to.lon - from.lon) * progress,
+      // Offset along the perpendicular of the travel vector.
+      lat: from.lat + dLat * progress - dLon * (bow + wobble),
+      lon: from.lon + dLon * progress + dLat * (bow + wobble),
       speed: cruiseMps * speedFactor,
       accuracy: 6,
     };
@@ -88,7 +99,7 @@ const drives: Drive[] = [
       makeEvent('e-3', 'rapid_accel', now - 26 * HOUR + 18 * MINUTE, 'Rapid acceleration merging'),
       makeEvent('e-4', 'hard_brake', now - 26 * HOUR + 24 * MINUTE, 'Hard brake near Petaluma Blvd'),
     ],
-    route: synthesizeRoute(SAN_RAFAEL, PETALUMA, now - 26 * HOUR, 48, 27),
+    route: synthesizeRoute(SAN_RAFAEL, PETALUMA, now - 26 * HOUR, 48, 27, -0.09),
   },
   {
     id: 'drive-1',
@@ -102,7 +113,7 @@ const drives: Drive[] = [
     avgSpeed: 11.7,
     safetyScore: 100,
     events: [],
-    route: synthesizeRoute(SAUSALITO, SAN_RAFAEL, now - 50 * HOUR, 32, 21),
+    route: synthesizeRoute(SAUSALITO, SAN_RAFAEL, now - 50 * HOUR, 32, 21, 0.16),
   },
 ];
 
