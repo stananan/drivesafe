@@ -21,6 +21,13 @@ npx expo start
 Install **Expo Go** from the App Store, then scan the QR code in the terminal
 with the Camera app. The app opens on your phone — no Xcode, no build step.
 
+> **This project targets Expo SDK 54**, because that is what the App Store's
+> Expo Go gives us. Expo Go supports exactly one SDK version at a time, so if
+> you ever see *"the project is incompatible with this version of Expo Go"*,
+> the project SDK and the installed Expo Go have drifted apart. Check your Expo
+> Go version on its home screen and match `"expo"` in `package.json` to it,
+> then run `npx expo install --fix`.
+
 The phone and the computer have to be on the same Wi-Fi. If they are not, or the
 network blocks device-to-device traffic, use a tunnel:
 

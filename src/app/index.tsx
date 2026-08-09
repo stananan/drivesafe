@@ -1,6 +1,4 @@
 import { Redirect } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -17,15 +15,10 @@ import type { Role } from '@/types/drive';
 export default function WelcomeScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { role, isLoading, setRole } = useSession();
+  // The root layout holds the splash until the role has loaded, so by the time
+  // this renders the role is known.
+  const { role, setRole } = useSession();
 
-  useEffect(() => {
-    // Hold the splash until we know which interface to show, so nobody sees the
-    // role picker flash before being redirected.
-    if (!isLoading) SplashScreen.hideAsync();
-  }, [isLoading]);
-
-  if (isLoading) return null;
   if (role === 'parent') return <Redirect href="/(parent)" />;
   if (role === 'teen') return <Redirect href="/(teen)" />;
 

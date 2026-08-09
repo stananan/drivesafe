@@ -1,4 +1,5 @@
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Icon, Label, NativeTabs, VectorIcon } from 'expo-router/unstable-native-tabs';
 import { useColorScheme } from 'react-native';
 
 import { Colors } from '@/constants/theme';
@@ -15,20 +16,29 @@ export default function ParentLayout() {
     <NativeTabs
       backgroundColor={colors.background}
       indicatorColor={colors.backgroundSelected}
-      labelStyle={{ selected: { color: colors.tint } }}>
+      labelStyle={{ color: colors.textSecondary }}>
       <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>Live</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="location.fill" md="my_location" />
+        <Label>Live</Label>
+        <Icon
+          sf="location.fill"
+          androidSrc={<VectorIcon family={MaterialIcons} name="my-location" />}
+        />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="drives">
-        <NativeTabs.Trigger.Label>Drives</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="list.bullet.rectangle" md="list_alt" />
+        <Label>Drives</Label>
+        <Icon
+          sf="list.bullet.rectangle"
+          androidSrc={<VectorIcon family={MaterialIcons} name="list-alt" />}
+        />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="settings">
-        <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="gearshape.fill" md="settings" />
+        <Label>Settings</Label>
+        <Icon
+          sf="gearshape.fill"
+          androidSrc={<VectorIcon family={MaterialIcons} name="settings" />}
+        />
       </NativeTabs.Trigger>
     </NativeTabs>
   );
