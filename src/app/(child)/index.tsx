@@ -9,39 +9,58 @@ import { Screen } from '@/components/ui/screen';
 import { Stat, StatRow } from '@/components/ui/stat';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { DEMO_DRIVER_NAME } from '@/lib/demo-data';
+import { saveDrive } from '@/lib/drives';
 import { formatDuration, formatMiles, formatMph } from '@/lib/format';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { useSession } from '@/lib/session';
 import { useDriveTracker } from '@/lib/use-drive-tracker';
 
 export default function DriveScreen() {
   const theme = useTheme();
   const tracker = useDriveTracker();
+  const { profile } = useSession();
+
   const [lastDriveSummary, setLastDriveSummary] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const isRecording = tracker.status === 'recording';
   const isStarting = tracker.status === 'requesting';
 
-  function handleStop() {
+  async function handleStop() {
     const summary = tracker.stop();
-    if (!summary) return;
+    if (!summary || !profile) return;
 
     const miles = formatMiles(summary.distanceMeters);
     const duration = formatDuration(summary.endedAt - summary.startedAt);
-    setLastDriveSummary(`${miles} mi in ${duration} · ${summary.route.length} GPS points`);
 
-    Alert.alert(
-      'Drive saved locally',
-      `${miles} mi in ${duration}.\n\n` +
-        (isSupabaseConfigured
-          ? 'Uploading to Supabase is the next milestone — the drive is held in memory for now.'
-          : 'Add your Supabase keys to .env.local to sync this drive to your parent.')
-    );
+    setIsSaving(true);
+
+    try {
+      await saveDrive({
+        driverId: profile.id,
+        startedAt: summary.startedAt,
+        endedAt: summary.endedAt,
+        distanceMeters: summary.distanceMeters,
+        topSpeed: summary.topSpeed,
+        avgSpeed: summary.avgSpeed,
+        route: summary.route,
+      });
+
+      setLastDriveSummary(`${miles} mi in ${duration} · saved`);
+      Alert.alert('Drive saved', `${miles} mi in ${duration}. Your family can see it now.`);
+    } catch (error) {
+      setLastDriveSummary(`${miles} mi in ${duration} · not saved`);
+      Alert.alert(
+        'Could not save drive',
+        error instanceof Error ? error.message : 'Check your connection and try again.'
+      );
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
     <Screen
-      title={isRecording ? 'Recording' : `Hey, ${DEMO_DRIVER_NAME}`}
+      title={isRecording ? 'Recording' : `Hey, ${profile?.username ?? 'there'}`}
       subtitle={
         isRecording
           ? 'Keep your eyes on the road — DriveSafe has this.'
@@ -65,11 +84,16 @@ export default function DriveScreen() {
         </StatRow>
 
         {isRecording ? (
-          <Button label="End drive" variant="danger" onPress={handleStop} />
+          <Button
+            label={isSaving ? 'Saving…' : 'End drive'}
+            variant="danger"
+            onPress={handleStop}
+            loading={isSaving}
+          />
         ) : (
           <Button
             label={isStarting ? 'Starting…' : 'Start drive'}
-            loading={isStarting}
+            loading={isStarting || isSaving}
             onPress={tracker.start}
           />
         )}
@@ -172,7 +196,6 @@ const styles = StyleSheet.create({
   upcomingLabel: {
     flexShrink: 1,
   },
-  // Wraps instead of running past the card edge on narrow phones.
   upcomingDetail: {
     flexShrink: 1,
     textAlign: 'right',

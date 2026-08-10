@@ -13,10 +13,11 @@ import { averageScore, listDrives, milesThisWeek } from '@/lib/drives';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/use-async';
 
-export default function ParentDrivesScreen() {
-  const { family } = useSession();
-  const { data, error, isLoading, reload } = useAsync(() => listDrives(), [family?.id]);
+export default function ChildHistoryScreen() {
+  const { profile } = useSession();
+  const { data, error, isLoading, reload } = useAsync(() => listDrives(), [profile?.id]);
 
+  // A drive recorded on the Drive tab should be here the moment they switch.
   useFocusEffect(
     useCallback(() => {
       void reload();
@@ -25,16 +26,15 @@ export default function ParentDrivesScreen() {
 
   const drives = data ?? [];
   const score = averageScore(drives);
-  const flagged = drives.reduce((count, drive) => count + drive.events.length, 0);
 
   return (
-    <Screen title="Drives" subtitle="Every completed trip, newest first.">
+    <Screen title="Your drives" subtitle="Every trip you record, scored and saved.">
       {drives.length > 0 ? (
-        <Card title="Last 7 days">
+        <Card title="This week">
           <StatRow>
-            <Stat label="Avg score" value={`${score}`} valueColor={scoreColor(score)} />
+            <Stat label="Safety score" value={`${score}`} valueColor={scoreColor(score)} />
             <Stat label="Miles" value={milesThisWeek(drives).toFixed(0)} unit="mi" />
-            <Stat label="Events" value={`${flagged}`} />
+            <Stat label="Drives" value={`${drives.length}`} />
           </StatRow>
         </Card>
       ) : null}
@@ -43,12 +43,12 @@ export default function ParentDrivesScreen() {
         isLoading={isLoading}
         error={error}
         isEmpty={drives.length === 0}
-        emptyMessage="No drives yet. Once a driver in your family records a trip it shows up here."
+        emptyMessage="No drives yet. Record one from the Drive tab and it will show up here."
       />
 
       <View style={styles.list}>
         {drives.map((drive) => (
-          <DriveListItem key={drive.id} drive={drive} showDriver />
+          <DriveListItem key={drive.id} drive={drive} />
         ))}
       </View>
     </Screen>

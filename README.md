@@ -41,19 +41,50 @@ the iOS Simulator to make the speedometer move.
 
 ---
 
-## Optional: connect Supabase
+## Supabase
 
-The app runs on demo data without any credentials. To point it at a real
-database:
+The app needs Supabase — accounts, families, and drive history all live there.
 
 ```bash
 cp .env.example .env.local
 # fill in the two values from Supabase → Project Settings → API
 ```
 
-Then apply `supabase/schema.sql` to your project. `.env.local` is git-ignored —
-never commit real keys. Only the anon/publishable key belongs in this file; it
-ships inside the app bundle.
+If you are pointing at a fresh project, paste `supabase/schema.sql` into the
+dashboard SQL Editor and run it. It is safe to run repeatedly, so re-run the
+whole file after editing rather than hand-patching tables.
+
+`.env.local` is git-ignored — never commit real keys. Only the anon/publishable
+key belongs in it; it ships inside the app bundle, which is exactly why row-level
+security, not secrecy, is what protects the data.
+
+### Test accounts
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Parent | `parent@drivesafe.example.com` | `DriveSafe2026!` |
+| Driver | `driver@drivesafe.example.com` | `DriveSafe2026!` |
+
+Both are in **The Ho Family**, whose code is **`WV7BYX`**. Sign in as the parent
+to see the family code and the driver's history, or as the driver to record a
+drive. Making a new account of your own works too: pick Parent to create a
+family, or Driver to join one with a code.
+
+## How accounts fit together
+
+```
+parent signs up ──▶ creates a family ──▶ gets a 6-character code
+                                              │
+                                              ▼
+                          child signs up ──▶ joins with that code
+                                              │
+                                              ▼
+                    child records drives ──▶ parent sees them
+```
+
+A child can use a code but cannot browse families, and nobody outside a family
+can read a single row belonging to it — that is enforced by row-level security
+in the database, not by the app.
 
 ---
 

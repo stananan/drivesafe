@@ -9,12 +9,11 @@ import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { DEMO_DRIVER_NAME } from '@/lib/demo-data';
 import { useSession } from '@/lib/session';
 
-export default function TeenProfileScreen() {
+export default function ChildProfileScreen() {
   const theme = useTheme();
-  const { signOut } = useSession();
+  const { profile, family, session, signOut, leaveFamily } = useSession();
   const [permission, setPermission] = useState<Location.PermissionStatus | null>(null);
 
   useEffect(() => {
@@ -35,19 +34,24 @@ export default function TeenProfileScreen() {
 
   const granted = permission === Location.PermissionStatus.GRANTED;
 
-  function confirmSwitch() {
-    Alert.alert('Switch role?', 'You will go back to the welcome screen and pick a role again.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Switch', style: 'destructive', onPress: () => void signOut() },
-    ]);
+  function confirmLeave() {
+    Alert.alert(
+      'Leave this family?',
+      'Your drives stay saved, but your family will stop seeing new ones until you rejoin.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Leave', style: 'destructive', onPress: () => void leaveFamily() },
+      ]
+    );
   }
 
   return (
     <Screen title="Profile" subtitle="Your account and what DriveSafe is allowed to do.">
       <Card title="Driver">
         <View style={styles.rows}>
-          <Row label="Name" value={DEMO_DRIVER_NAME} />
-          <Row label="Linked parent" value="Not linked yet" />
+          <Row label="Username" value={profile?.username ?? '—'} />
+          <Row label="Email" value={session?.user.email ?? '—'} />
+          <Row label="Family" value={family?.name ?? 'Not in a family'} />
           <Row
             label="Location access"
             value={granted ? 'Granted' : permission === null ? 'Unknown' : 'Not granted'}
@@ -58,14 +62,17 @@ export default function TeenProfileScreen() {
 
       <Card title="Your data">
         <ThemedText type="small" themeColor="textSecondary">
-          Drives are recorded on this phone and shared only with the parent account you link. Audio
-          distraction detection will run on-device — DriveSafe never uploads what it hears.
+          Drives are recorded on this phone and shared only with your family. Audio distraction
+          detection will run on-device — DriveSafe never uploads what it hears.
         </ThemedText>
       </Card>
 
       <AboutCard />
 
-      <Button label="Switch role" variant="secondary" onPress={confirmSwitch} />
+      <View style={styles.actions}>
+        <Button label="Leave family" variant="secondary" onPress={confirmLeave} />
+        <Button label="Sign out" variant="secondary" onPress={() => void signOut()} />
+      </View>
     </Screen>
   );
 }
@@ -91,6 +98,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: Spacing.two,
+  },
+  actions: {
     gap: Spacing.two,
   },
 });

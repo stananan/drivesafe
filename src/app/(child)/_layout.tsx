@@ -5,13 +5,13 @@ import { useColorScheme } from 'react-native';
 import { Colors } from '@/constants/theme';
 
 /**
- * The teen's app is built around one button: start the drive. History and
+ * The driver's app is built around one button: start the drive. History and
  * profile sit behind it.
  *
  * iOS renders SF Symbols natively; Android has no equivalent name lookup, so it
  * gets the matching Material icon through `androidSrc`.
  */
-export default function TeenLayout() {
+export default function ChildLayout() {
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
 

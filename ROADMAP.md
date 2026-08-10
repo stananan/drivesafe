@@ -60,21 +60,33 @@ both roles. A teen should never wonder what their parent is being shown.
 - Verified: `tsc` clean, `expo lint` clean, `expo-doctor` 20/20, iOS and Android
   bundles export.
 
-### Phase 1 — Persistence (next)
+### Phase 1 — Auth, families, persistence ✅ *done*
 
-The single highest-value next step: right now a finished drive dies with the
-screen.
+- `supabase/schema.sql` applied to the live project. It is idempotent — re-run
+  it after any edit rather than hand-patching the database.
+- Email/password auth. Username and role travel in the signup metadata and the
+  `on_auth_user_created` trigger turns them into a `profiles` row, so there is
+  never a signed-in user without a profile.
+- Families: a parent calls `create_family` and gets a six-character code; a
+  child calls `join_family` with it. Both are `SECURITY DEFINER` RPCs because a
+  child must be able to *use* a code without being able to *browse* families.
+- Finished drives and their full GPS traces persist to `drives` /
+  `drive_points`. Points insert in chunks of 500.
+- `demo-data.ts` is gone. Every screen reads `src/lib/drives.ts`.
+- Row-level security on all five tables, verified by an outsider account that
+  can see zero drives, zero families, and only its own profile.
 
-1. Apply `supabase/schema.sql` to the project.
-2. Supabase auth — email/password is enough. Role moves from AsyncStorage onto
-   the `profiles` row; `src/lib/session.tsx` reads it from the session.
-3. Parent↔teen linking via a short invite code.
-4. `stop()` in the tracker already returns an upload-ready `DriveSummary` —
-   write it to `drives` + `drive_points` there.
-5. Replace `src/lib/demo-data.ts` call sites with real queries. Every screen
-   reads through those four functions specifically so this is a one-file change.
-6. Row-level security so a parent reads only their linked teens' rows. Write the
-   policies *with* the tables, not after.
+### Phase 1.5 — Safety scoring (next)
+
+Drives currently save with a hardcoded `safety_score` of 100 — the column and
+the whole UI are wired, but nothing computes a real number yet.
+
+1. Detect events from the GPS trace: speeding needs a speed-limit source
+   (OpenStreetMap Overpass is free), hard braking and rapid acceleration come
+   from `expo-sensors` accelerometer deltas.
+2. Write them to `drive_events` as the drive runs.
+3. Score = 100 minus severity-weighted penalties, normalized per mile so a long
+   drive is not punished for being long.
 
 ### Phase 2 — Live tracking
 
