@@ -6,6 +6,7 @@
  * re-filter by role. The database is the authority, not the client.
  */
 
+import { scoreDrive } from '@/lib/scoring';
 import { requireSupabase } from '@/lib/supabase';
 import type { Drive, DriveEvent, DrivePoint, LinkedDriver } from '@/types/drive';
 
@@ -146,19 +147,30 @@ export async function getDrive(id: string): Promise<Drive | null> {
   return toDrive(row as unknown as DriveRow, events, route);
 }
 
-/** The children in the caller's family, as the parent's Live tab sees them. */
+/**
+ * The children in the caller's family, as the parent's Live tab sees them:
+ * where they are, whether they are driving right now, and how they have been
+ * scoring. One query rather than three so the tab renders in a single pass.
+ */
 export async function listFamilyDrivers(familyId: string): Promise<LinkedDriver[]> {
   const supabase = requireSupabase();
 
   const { data: profileRows, error } = await supabase
     .from('profiles')
-    .select('id, username')
+    .select('id, username, last_lat, last_lon, last_location_at, location_sharing')
     .eq('family_id', familyId)
     .eq('role', 'child');
 
   if (error) throw new Error(error.message);
 
-  const children = (profileRows ?? []) as { id: string; username: string }[];
+  const children = (profileRows ?? []) as {
+    id: string;
+    username: string;
+    last_lat: number | null;
+    last_lon: number | null;
+    last_location_at: string | null;
+    location_sharing: boolean;
+  }[];
   if (children.length === 0) return [];
 
   const { data: driveRows } = await supabase
@@ -190,16 +202,24 @@ export async function listFamilyDrivers(familyId: string): Promise<LinkedDriver[
             completed.reduce((sum, drive) => sum + drive.safety_score, 0) / completed.length
           );
 
-    const lastSeenAt = theirs[0]
+    // Prefer the location timestamp: a driver sitting in traffic is still
+    // "seen" even though their last drive ended hours ago.
+    const lastDriveAt = theirs[0]
       ? new Date(theirs[0].ended_at ?? theirs[0].started_at).getTime()
       : null;
+    const lastFixAt = child.last_location_at
+      ? new Date(child.last_location_at).getTime()
+      : null;
+
+    const isSharing =
+      child.location_sharing && child.last_lat !== null && child.last_lon !== null;
 
     return {
       id: child.id,
       name: child.username,
       activeDriveId: active?.id ?? null,
-      lastSeenAt,
-      lastLocation: null,
+      lastSeenAt: lastFixAt ?? lastDriveAt,
+      lastLocation: isSharing ? { lat: child.last_lat!, lon: child.last_lon! } : null,
       weekScore,
     };
   });
@@ -224,6 +244,9 @@ export type SavedDriveInput = {
 export async function saveDrive(input: SavedDriveInput): Promise<string> {
   const supabase = requireSupabase();
 
+  // Scored on the phone from the trace we just recorded — see SCORING.md.
+  const scored = scoreDrive(input.route);
+
   const { data, error } = await supabase
     .from('drives')
     .insert({
@@ -233,7 +256,7 @@ export async function saveDrive(input: SavedDriveInput): Promise<string> {
       distance_meters: input.distanceMeters,
       top_speed: input.topSpeed,
       avg_speed: input.avgSpeed,
-      safety_score: 100,
+      safety_score: scored.score,
     })
     .select('id')
     .single<{ id: string }>();
@@ -241,6 +264,23 @@ export async function saveDrive(input: SavedDriveInput): Promise<string> {
   if (error) throw new Error(error.message);
 
   const driveId = data.id;
+
+  if (scored.events.length > 0) {
+    const { error: eventError } = await supabase.from('drive_events').insert(
+      scored.events.map((event) => ({
+        drive_id: driveId,
+        type: event.type,
+        occurred_at: new Date(event.at).toISOString(),
+        detail: event.detail,
+        lat: event.lat ?? null,
+        lon: event.lon ?? null,
+      }))
+    );
+
+    // A missing event list is a worse outcome than a missing score, but neither
+    // should lose the drive itself — it is already saved at this point.
+    if (eventError) console.warn('Could not save drive events:', eventError.message);
+  }
 
   const CHUNK = 500;
   for (let i = 0; i < input.route.length; i += CHUNK) {

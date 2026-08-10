@@ -1,10 +1,11 @@
 /**
  * DriveSafe design tokens.
  *
- * The palette is intentionally calm: a deep navy ground with a single confident
- * blue for actions, and a green/amber/red scale reserved *only* for safety
- * signals. Nothing decorative is allowed to use the safety colors — if it is
- * green, it means the drive was safe.
+ * Light green and white: white ground, pale green surfaces, and one confident
+ * green for actions. The safety scale (green / amber / red) is deliberately a
+ * *different* green from the brand green so "this drive was safe" never reads as
+ * ordinary chrome — the brand green is muted and cool, the safety green is
+ * brighter and warmer.
  */
 
 import '@/global.css';
@@ -13,30 +14,31 @@ import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#0B1220',
-    textSecondary: '#5A6478',
-    background: '#F6F8FC',
-    backgroundElement: '#FFFFFF',
-    backgroundSelected: '#E8EDF7',
-    border: '#DDE3EF',
-    tint: '#2F6BFF',
+    text: '#0F1F16',
+    textSecondary: '#5A6B60',
+    background: '#FFFFFF',
+    /** Cards and raised surfaces: the palest green that still reads as green. */
+    backgroundElement: '#F1F9F3',
+    backgroundSelected: '#DFF1E4',
+    border: '#CDE6D5',
+    tint: '#2E8B57',
     onTint: '#FFFFFF',
-    success: '#12A150',
-    warning: '#C77700',
-    danger: '#D93838',
+    success: '#1F9D55',
+    warning: '#B7791F',
+    danger: '#C53030',
   },
   dark: {
-    text: '#F4F7FC',
-    textSecondary: '#9BA5BA',
-    background: '#0B1220',
-    backgroundElement: '#151D2E',
-    backgroundSelected: '#1F2940',
-    border: '#243049',
-    tint: '#5A8CFF',
-    onTint: '#06101F',
-    success: '#2BD37A',
-    warning: '#F5A524',
-    danger: '#FF6B6B',
+    text: '#ECF6EF',
+    textSecondary: '#9DB3A5',
+    background: '#0C1611',
+    backgroundElement: '#152420',
+    backgroundSelected: '#1E332B',
+    border: '#274236',
+    tint: '#4FBE80',
+    onTint: '#06140C',
+    success: '#3FD68A',
+    warning: '#E7A94A',
+    danger: '#F26D6D',
   },
 } as const;
 

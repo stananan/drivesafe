@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { QueryState } from '@/components/ui/query-state';
 import { Screen } from '@/components/ui/screen';
-import { Radius, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { listFamilyDrivers } from '@/lib/drives';
 import { useSession } from '@/lib/session';
@@ -49,17 +49,16 @@ export default function ParentSettingsScreen() {
   return (
     <Screen title="Settings" subtitle="Your family code, drivers, and alerts.">
       <Card title="Family code" meta={family?.name ?? ''}>
-        <ThemedText type="small" themeColor="textSecondary">
-          Share this with your driver. They enter it when they create their account.
-        </ThemedText>
-
-        <View style={[styles.codeBox, { borderColor: theme.tint }]}>
+        <View style={styles.codeRow}>
           <ThemedText style={[styles.code, { color: theme.tint }]}>
             {family?.code ?? '——————'}
           </ThemedText>
+          <Button label="Copy" variant="secondary" onPress={() => void copyCode()} />
         </View>
-
-        <Button label="Copy code" variant="secondary" onPress={() => void copyCode()} />
+        <ThemedText type="small" themeColor="textSecondary">
+          Share this to add another driver. New parents get the big version on the Live tab until
+          someone joins.
+        </ThemedText>
       </Card>
 
       <Card title="Drivers" meta={`${driverList.length} joined`}>
@@ -154,16 +153,16 @@ const styles = StyleSheet.create({
     minHeight: 32,
     gap: Spacing.two,
   },
-  codeBox: {
-    borderWidth: 1,
-    borderRadius: Radius.medium,
-    paddingVertical: Spacing.three,
+  codeRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
   },
   code: {
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: '700',
-    letterSpacing: 8,
+    letterSpacing: 4,
   },
   footer: {
     textAlign: 'center',

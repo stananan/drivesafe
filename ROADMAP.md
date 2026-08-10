@@ -76,17 +76,32 @@ both roles. A teen should never wonder what their parent is being shown.
 - Row-level security on all five tables, verified by an outsider account that
   can see zero drives, zero families, and only its own profile.
 
-### Phase 1.5 — Safety scoring (next)
+### Phase 2 — Maps and safety scoring ✅ *done*
 
-Drives currently save with a hardcoded `safety_score` of 100 — the column and
-the whole UI are wired, but nothing computes a real number yet.
+- **`react-native-maps` runs inside Expo Go.** The earlier note that maps needed
+  a development build was about `expo-maps`; `react-native-maps` is bundled in
+  the Expo Go client, so live maps needed no build step at all. Verified on an
+  iPhone 17 Pro with real Apple Maps tiles.
+- Live mutual location: both roles publish their position while the relevant
+  screen is focused, and everyone in a family sees everyone else. Only the most
+  recent fix is stored — there is no location history table by design.
+- Parent **Live** tab is now the map: avatar pins, a driver list underneath, and
+  tapping a driver slides the camera to them. The family code lives here as an
+  onboarding card and disappears the moment a driver joins.
+- Real safety scores. See `SCORING.md` for the equation and its derivation.
+  Curvature is computed from the GPS trace geometry, so "too fast for this bend"
+  works with no road database at all.
 
-1. Detect events from the GPS trace: speeding needs a speed-limit source
-   (OpenStreetMap Overpass is free), hard braking and rapid acceleration come
-   from `expo-sensors` accelerometer deltas.
-2. Write them to `drive_events` as the drive runs.
-3. Score = 100 minus severity-weighted penalties, normalized per mile so a long
-   drive is not punished for being long.
+### Phase 2.5 — Real speed limits (next)
+
+The scoring equation is complete, but the speeding term still uses
+`inferSpeedLimit()`, a conservative stand-in derived from observed speed. The
+cornering term carries most of the signal until this lands.
+
+`scoreDrive(route, limitFor?)` already takes a `SpeedLimitProvider` — wiring
+OpenStreetMap Overpass means writing that one function. `SCORING.md` documents
+the segment-snapping, the fallback ladder for missing `maxspeed` tags, and the
+caching strategy.
 
 ### Phase 2 — Live tracking
 
@@ -169,16 +184,17 @@ were `ThemeProvider` living in `@react-navigation/native`, `NativeTabs` exposing
 `useColorScheme` returning `null` instead of `'unspecified'`.
 
 **Expo Go vs. development build.** This phase runs in Expo Go so it opens from a
-QR code on any phone with no build step. That rules out, for now:
+QR code on any phone with no build step. Maps turned out *not* to need a build —
+`react-native-maps` ships inside Expo Go, even though `expo-maps` does not. What
+still requires leaving Expo Go:
 
-- `expo-maps` — not in Expo Go (this is why `RoutePreview` is a hand-rolled
-  sketch instead of a map)
-- background location via `expo-task-manager`
+- background location via `expo-task-manager`, so a drive keeps recording with
+  the phone locked
 - `expo-camera` recording for the dashcam
+- push notifications
 
-Phases 2, 3, and 6 all require moving to `npx expo run:ios` or an EAS
-development build. Plan that transition once Phase 1 is persisted — it is a
-one-way door for the "scan a QR code" demo convenience.
+Those need `npx expo run:ios` or an EAS development build, which costs the "scan
+a QR code" convenience. Worth choosing deliberately rather than stumbling into.
 
 **iOS reports `speed: -1`** when it cannot resolve a speed. The tracker maps
 that to `null` rather than treating it as zero; anything reading `speed` must

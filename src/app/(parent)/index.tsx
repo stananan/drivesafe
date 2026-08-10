@@ -1,129 +1,379 @@
+import * as Clipboard from 'expo-clipboard';
+import * as Location from 'expo-location';
 import { useFocusEffect } from 'expo-router';
-import { useCallback } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import MapView, { Marker, type Region } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { RoutePreview } from '@/components/route-preview';
+import { AvatarPin } from '@/components/avatar-pin';
 import { ThemedText } from '@/components/themed-text';
-import { Card } from '@/components/ui/card';
-import { QueryState } from '@/components/ui/query-state';
-import { ScoreBadge, scoreColor } from '@/components/ui/score-badge';
-import { Screen } from '@/components/ui/screen';
-import { Stat, StatRow } from '@/components/ui/stat';
-import { Radius, Spacing } from '@/constants/theme';
+import { Button } from '@/components/ui/button';
+import { ScoreBadge } from '@/components/ui/score-badge';
+import { BottomTabInset, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { listDrives, listFamilyDrivers, milesThisWeek } from '@/lib/drives';
-import { formatMiles, formatRelative } from '@/lib/format';
+import { listFamilyDrivers } from '@/lib/drives';
+import { formatRelative } from '@/lib/format';
+import { publishLocation } from '@/lib/locations';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/use-async';
 import type { LinkedDriver } from '@/types/drive';
 
+/** Marin County, so an empty map still shows the district DriveSafe was built for. */
+const FALLBACK_REGION: Region = {
+  latitude: 38.0834,
+  longitude: -122.7633,
+  latitudeDelta: 0.2,
+  longitudeDelta: 0.2,
+};
+
+const REFRESH_INTERVAL_MS = 15_000;
+
 export default function ParentLiveScreen() {
-  const { family } = useSession();
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const { profile, family } = useSession();
+
+  const mapRef = useRef<MapView | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const hasFramed = useRef(false);
 
   const drivers = useAsync(
     () => (family ? listFamilyDrivers(family.id) : Promise.resolve([])),
     [family?.id],
     { enabled: Boolean(family) }
   );
-  const drives = useAsync(() => listDrives(), [family?.id]);
+
+  // The parent broadcasts too, so their driver can see them on the child map.
+  useEffect(() => {
+    if (!profile) return;
+    let cancelled = false;
+
+    const userId = profile.id;
+
+    async function publish() {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== Location.PermissionStatus.GRANTED || cancelled) return;
+
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (cancelled) return;
+
+        await publishLocation({
+          userId,
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+        });
+      } catch {
+        // Not being able to publish should never break the parent's view.
+      }
+    }
+
+    void publish();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile]);
 
   useFocusEffect(
     useCallback(() => {
       void drivers.reload();
-      void drives.reload();
-      // Reloading on focus is the point; re-running when the callbacks change is not.
+      const timer = setInterval(() => void drivers.reload(), REFRESH_INTERVAL_MS);
+      return () => clearInterval(timer);
+      // Polling on focus is the point; re-arming when the callback identity
+      // changes is not.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
   );
 
-  const driverList = drivers.data ?? [];
-  const driveList = drives.data ?? [];
-  const recentDrive = driveList[0];
+  const driverList = useMemo(() => drivers.data ?? [], [drivers.data]);
+  const located = useMemo(
+    () => driverList.filter((driver) => driver.lastLocation !== null),
+    [driverList]
+  );
+
+  /** Slides the map to a driver rather than jumping, so the move is followable. */
+  const centerOn = useCallback((driver: LinkedDriver) => {
+    if (!driver.lastLocation || !mapRef.current) return;
+
+    setSelectedId(driver.id);
+    mapRef.current.animateToRegion(
+      {
+        latitude: driver.lastLocation.lat,
+        longitude: driver.lastLocation.lon,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      },
+      700
+    );
+  }, []);
+
+  // Frame everyone once, the first time positions arrive.
+  useEffect(() => {
+    if (hasFramed.current || located.length === 0 || !mapRef.current) return;
+    hasFramed.current = true;
+
+    if (located.length === 1) {
+      centerOn(located[0]);
+      return;
+    }
+
+    mapRef.current.fitToCoordinates(
+      located.map((driver) => ({
+        latitude: driver.lastLocation!.lat,
+        longitude: driver.lastLocation!.lon,
+      })),
+      { edgePadding: { top: 90, right: 70, bottom: 90, left: 70 }, animated: true }
+    );
+  }, [located, centerOn]);
+
+  async function copyCode() {
+    if (!family) return;
+    await Clipboard.setStringAsync(family.code);
+    Alert.alert('Copied', `Family code ${family.code} is on your clipboard.`);
+  }
+
+  const noDriversYet = !drivers.isLoading && driverList.length === 0;
 
   return (
-    <Screen title="Live" subtitle={`Where ${family?.name ?? 'your family'} is right now.`}>
-      <QueryState
-        isLoading={drivers.isLoading}
-        error={drivers.error}
-        isEmpty={!drivers.isLoading && driverList.length === 0}
-        emptyMessage={`No drivers have joined yet. Share your family code ${family?.code ?? ''} from the Settings tab.`}
-      />
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
+      <View style={styles.mapWrap}>
+        <MapView
+          ref={mapRef}
+          style={StyleSheet.absoluteFill}
+          initialRegion={FALLBACK_REGION}
+          showsUserLocation
+          showsMyLocationButton={false}
+          toolbarEnabled={false}>
+          {located.map((driver) => (
+            <Marker
+              key={driver.id}
+              coordinate={{
+                latitude: driver.lastLocation!.lat,
+                longitude: driver.lastLocation!.lon,
+              }}
+              onPress={() => centerOn(driver)}
+              // The pin's point sits at the coordinate, not its middle.
+              anchor={{ x: 0.5, y: 1 }}
+              tracksViewChanges={false}>
+              <AvatarPin
+                label={driver.name}
+                isDriving={driver.activeDriveId !== null}
+                isSelected={selectedId === driver.id}
+              />
+            </Marker>
+          ))}
+        </MapView>
 
-      {driverList.map((driver) => (
-        <DriverCard key={driver.id} driver={driver} />
-      ))}
+        <View style={[styles.mapHeader, { top: insets.top + Spacing.two }]}>
+          <View style={[styles.floatingCard, { backgroundColor: theme.backgroundElement }]}>
+            <ThemedText type="smallBold">{family?.name ?? 'Your family'}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {drivers.isLoading
+                ? 'Loading…'
+                : located.length === 0
+                  ? 'No live locations yet'
+                  : `${located.length} ${located.length === 1 ? 'driver' : 'drivers'} on the map`}
+            </ThemedText>
+          </View>
+        </View>
+      </View>
 
-      {recentDrive ? (
-        <Card title="Most recent drive" meta={formatRelative(recentDrive.startedAt)}>
-          <RoutePreview
-            route={recentDrive.route}
-            caption={`${formatMiles(recentDrive.distanceMeters)} mi recorded`}
-          />
-          <StatRow>
-            <Stat
-              label="Safety score"
-              value={`${recentDrive.safetyScore}`}
-              valueColor={scoreColor(recentDrive.safetyScore)}
-            />
-            <Stat label="Miles this week" value={milesThisWeek(driveList).toFixed(0)} unit="mi" />
-            <Stat label="Events" value={`${recentDrive.events.length}`} />
-          </StatRow>
-        </Card>
-      ) : null}
-    </Screen>
+      <View style={[styles.sheet, { backgroundColor: theme.background }]}>
+        {noDriversYet ? (
+          <FamilyCodeOnboarding code={family?.code ?? ''} onCopy={() => void copyCode()} />
+        ) : (
+          <ScrollView
+            contentContainerStyle={[
+              styles.listContent,
+              { paddingBottom: BottomTabInset + insets.bottom + Spacing.three },
+            ]}
+            showsVerticalScrollIndicator={false}>
+            <View style={styles.listHeader}>
+              <ThemedText type="smallBold">Drivers</ThemedText>
+              {drivers.isLoading ? <ActivityIndicator color={theme.tint} /> : null}
+            </View>
+
+            {drivers.error ? (
+              <ThemedText type="small" style={{ color: theme.danger }}>
+                {drivers.error}
+              </ThemedText>
+            ) : null}
+
+            {driverList.map((driver) => (
+              <DriverRow
+                key={driver.id}
+                driver={driver}
+                isSelected={selectedId === driver.id}
+                onPress={() => centerOn(driver)}
+              />
+            ))}
+          </ScrollView>
+        )}
+      </View>
+    </View>
   );
 }
 
-function DriverCard({ driver }: { driver: LinkedDriver }) {
+/**
+ * Shown only until the first driver joins. Once someone is in the family this
+ * whole block is replaced by the driver list, so the code stops taking up the
+ * screen the moment it stops being useful.
+ */
+function FamilyCodeOnboarding({ code, onCopy }: { code: string; onCopy: () => void }) {
   const theme = useTheme();
-  const isDriving = driver.activeDriveId !== null;
 
   return (
-    <Card>
-      <View style={styles.driverRow}>
-        <View style={styles.driverInfo}>
-          <View style={styles.nameRow}>
-            <View
-              style={[
-                styles.dot,
-                { backgroundColor: isDriving ? theme.success : theme.textSecondary },
-              ]}
-            />
-            <ThemedText type="smallBold">{driver.name}</ThemedText>
-          </View>
-          <ThemedText type="small" themeColor="textSecondary">
-            {isDriving
-              ? 'On a drive now'
-              : driver.lastSeenAt
-                ? `Not driving · last drive ${formatRelative(driver.lastSeenAt)}`
-                : 'No drives recorded yet'}
-          </ThemedText>
-        </View>
-        <ScoreBadge score={driver.weekScore} />
+    <View style={styles.onboarding}>
+      <ThemedText type="smallBold">Invite your driver</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        Share this code. They enter it when they create their account, and this card disappears
+        once they join.
+      </ThemedText>
+
+      <View style={[styles.codeBox, { borderColor: theme.tint, backgroundColor: theme.backgroundElement }]}>
+        <ThemedText style={[styles.code, { color: theme.tint }]}>{code || '——————'}</ThemedText>
       </View>
-    </Card>
+
+      <Button label="Copy code" variant="secondary" onPress={onCopy} />
+    </View>
+  );
+}
+
+function DriverRow({
+  driver,
+  isSelected,
+  onPress,
+}: {
+  driver: LinkedDriver;
+  isSelected: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const isDriving = driver.activeDriveId !== null;
+  const hasLocation = driver.lastLocation !== null;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
+      onPress={onPress}
+      disabled={!hasLocation}
+      style={({ pressed }) => [
+        styles.driverRow,
+        {
+          backgroundColor: isSelected ? theme.backgroundSelected : theme.backgroundElement,
+          borderColor: isSelected ? theme.tint : theme.border,
+          opacity: pressed || !hasLocation ? 0.75 : 1,
+        },
+      ]}>
+      <View style={[styles.avatar, { backgroundColor: isDriving ? theme.success : theme.tint }]}>
+        <ThemedText style={[styles.avatarInitial, { color: theme.onTint }]}>
+          {driver.name.charAt(0).toUpperCase()}
+        </ThemedText>
+      </View>
+
+      <View style={styles.driverText}>
+        <ThemedText type="smallBold">{driver.name}</ThemedText>
+        <ThemedText
+          type="small"
+          style={{ color: isDriving ? theme.success : theme.textSecondary }}>
+          {isDriving
+            ? 'Driving now'
+            : hasLocation
+              ? `Parked · updated ${formatRelative(driver.lastSeenAt ?? Date.now())}`
+              : 'Not sharing location'}
+        </ThemedText>
+      </View>
+
+      <ScoreBadge score={driver.weekScore} showLabel={false} />
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  driverRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+  root: {
+    flex: 1,
+  },
+  // Upper portion of the screen is the map; the list sheet takes the rest.
+  mapWrap: {
+    flex: 6,
+  },
+  sheet: {
+    flex: 4,
+    borderTopLeftRadius: Radius.large,
+    borderTopRightRadius: Radius.large,
+    marginTop: -Radius.large,
+    paddingTop: Spacing.three,
+    paddingHorizontal: Spacing.three,
+  },
+  mapHeader: {
+    position: 'absolute',
+    left: Spacing.three,
+    right: Spacing.three,
+  },
+  floatingCard: {
+    borderRadius: Radius.medium,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    gap: Spacing.half,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  listContent: {
     gap: Spacing.two,
   },
-  driverInfo: {
+  listHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: Spacing.one,
+  },
+  driverRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    borderRadius: Radius.medium,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Spacing.three,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    fontSize: 17,
+    fontWeight: '700',
+    lineHeight: 21,
+  },
+  driverText: {
     flex: 1,
     gap: Spacing.half,
   },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
+  onboarding: {
+    gap: Spacing.three,
+    paddingTop: Spacing.two,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: Radius.pill,
+  codeBox: {
+    borderWidth: 1,
+    borderRadius: Radius.medium,
+    paddingVertical: Spacing.three,
+    alignItems: 'center',
+  },
+  code: {
+    fontSize: 34,
+    fontWeight: '700',
+    letterSpacing: 8,
+    // letterSpacing adds a trailing gap after the last character, which pushes
+    // centred text visibly left. Pull it back by the same amount.
+    marginLeft: 8,
   },
 });
