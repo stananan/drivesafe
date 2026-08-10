@@ -55,6 +55,16 @@ create table if not exists public.profiles (
 
 create index if not exists profiles_family_idx on public.profiles (family_id);
 
+-- Live location, so family members can see each other on the map. Only ever the
+-- most recent fix — DriveSafe does not keep a location history outside of the
+-- drives a driver chooses to record.
+alter table public.profiles
+  add column if not exists last_lat double precision,
+  add column if not exists last_lon double precision,
+  add column if not exists last_location_at timestamptz,
+  -- Anyone can stop broadcasting without leaving the family.
+  add column if not exists location_sharing boolean not null default true;
+
 create table if not exists public.drives (
   id              uuid primary key default gen_random_uuid(),
   driver_id       uuid not null references public.profiles (id) on delete cascade,
@@ -435,7 +445,15 @@ grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.drives to authenticated;
 grant select, insert on public.drive_points, public.drive_events to authenticated;
 grant select on public.families, public.profiles to authenticated;
-grant update on public.profiles to authenticated;
+
+-- Column-level on purpose. A blanket UPDATE would let a child set their own
+-- role to 'parent' or move themselves into another family with a plain PATCH,
+-- since the row policy only checks *which* row they touch, not which columns.
+-- Role and family changes therefore only happen inside the SECURITY DEFINER
+-- RPCs above, which run as the table owner and are unaffected by this grant.
+revoke update on public.profiles from authenticated;
+grant update (last_lat, last_lon, last_location_at, location_sharing)
+  on public.profiles to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 
 -- Callable before sign-in, so anon needs it too.
