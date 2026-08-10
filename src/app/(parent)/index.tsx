@@ -1,50 +1,75 @@
+import { useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { RoutePreview } from '@/components/route-preview';
 import { ThemedText } from '@/components/themed-text';
 import { Card } from '@/components/ui/card';
+import { QueryState } from '@/components/ui/query-state';
 import { ScoreBadge, scoreColor } from '@/components/ui/score-badge';
 import { Screen } from '@/components/ui/screen';
 import { Stat, StatRow } from '@/components/ui/stat';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { getDrive, listDrives, listLinkedDrivers, totalMilesThisWeek } from '@/lib/demo-data';
+import { listDrives, listFamilyDrivers, milesThisWeek } from '@/lib/drives';
 import { formatMiles, formatRelative } from '@/lib/format';
+import { useSession } from '@/lib/session';
+import { useAsync } from '@/lib/use-async';
 import type { LinkedDriver } from '@/types/drive';
 
 export default function ParentLiveScreen() {
-  const drivers = listLinkedDrivers();
-  const recentDrive = listDrives()[0];
+  const { family } = useSession();
+
+  const drivers = useAsync(
+    () => (family ? listFamilyDrivers(family.id) : Promise.resolve([])),
+    [family?.id],
+    { enabled: Boolean(family) }
+  );
+  const drives = useAsync(() => listDrives(), [family?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void drivers.reload();
+      void drives.reload();
+      // Reloading on focus is the point; re-running when the callbacks change is not.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+  );
+
+  const driverList = drivers.data ?? [];
+  const driveList = drives.data ?? [];
+  const recentDrive = driveList[0];
 
   return (
-    <Screen title="Live" subtitle="Where your drivers are right now.">
-      {drivers.map((driver) => (
+    <Screen title="Live" subtitle={`Where ${family?.name ?? 'your family'} is right now.`}>
+      <QueryState
+        isLoading={drivers.isLoading}
+        error={drivers.error}
+        isEmpty={!drivers.isLoading && driverList.length === 0}
+        emptyMessage={`No drivers have joined yet. Share your family code ${family?.code ?? ''} from the Settings tab.`}
+      />
+
+      {driverList.map((driver) => (
         <DriverCard key={driver.id} driver={driver} />
       ))}
 
-      <Card title="Most recent drive" meta={recentDrive ? formatRelative(recentDrive.startedAt) : ''}>
-        {recentDrive ? (
-          <>
-            <RoutePreview
-              route={getDrive(recentDrive.id)?.route ?? []}
-              caption={`${formatMiles(recentDrive.distanceMeters)} mi recorded`}
+      {recentDrive ? (
+        <Card title="Most recent drive" meta={formatRelative(recentDrive.startedAt)}>
+          <RoutePreview
+            route={recentDrive.route}
+            caption={`${formatMiles(recentDrive.distanceMeters)} mi recorded`}
+          />
+          <StatRow>
+            <Stat
+              label="Safety score"
+              value={`${recentDrive.safetyScore}`}
+              valueColor={scoreColor(recentDrive.safetyScore)}
             />
-            <StatRow>
-              <Stat
-                label="Safety score"
-                value={`${recentDrive.safetyScore}`}
-                valueColor={scoreColor(recentDrive.safetyScore)}
-              />
-              <Stat label="Miles this week" value={totalMilesThisWeek().toFixed(0)} unit="mi" />
-              <Stat label="Events" value={`${recentDrive.events.length}`} />
-            </StatRow>
-          </>
-        ) : (
-          <ThemedText type="small" themeColor="textSecondary">
-            No drives recorded yet.
-          </ThemedText>
-        )}
-      </Card>
+            <Stat label="Miles this week" value={milesThisWeek(driveList).toFixed(0)} unit="mi" />
+            <Stat label="Events" value={`${recentDrive.events.length}`} />
+          </StatRow>
+        </Card>
+      ) : null}
     </Screen>
   );
 }
@@ -69,17 +94,13 @@ function DriverCard({ driver }: { driver: LinkedDriver }) {
           <ThemedText type="small" themeColor="textSecondary">
             {isDriving
               ? 'On a drive now'
-              : `Not driving · last seen ${formatRelative(driver.lastSeenAt)}`}
+              : driver.lastSeenAt
+                ? `Not driving · last drive ${formatRelative(driver.lastSeenAt)}`
+                : 'No drives recorded yet'}
           </ThemedText>
         </View>
         <ScoreBadge score={driver.weekScore} />
       </View>
-
-      {driver.lastLocation ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          Last location {driver.lastLocation.lat.toFixed(4)}, {driver.lastLocation.lon.toFixed(4)}
-        </ThemedText>
-      ) : null}
     </Card>
   );
 }

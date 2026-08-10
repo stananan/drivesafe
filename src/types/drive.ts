@@ -1,9 +1,26 @@
 /**
- * Core domain types. These mirror the Supabase schema documented in
- * `supabase/schema.sql` — keep the two in sync when either changes.
+ * Core domain types. These mirror the Supabase schema in `supabase/schema.sql` —
+ * keep the two in sync when either changes.
  */
 
-export type Role = 'parent' | 'teen';
+/** Matches the `user_role` enum in Postgres. */
+export type Role = 'parent' | 'child';
+
+export type Profile = {
+  id: string;
+  username: string;
+  role: Role;
+  /** Null until the user creates or joins a family. */
+  familyId: string | null;
+};
+
+export type Family = {
+  id: string;
+  name: string;
+  /** Six characters, shared with children so they can join. */
+  code: string;
+  createdBy: string;
+};
 
 /** A single GPS sample taken while a drive is in progress. */
 export type DrivePoint = {
@@ -51,17 +68,17 @@ export type Drive = {
   /** 0–100, higher is safer. */
   safetyScore: number;
   events: DriveEvent[];
-  /** Route polyline. Trimmed for list views, complete on the detail screen. */
+  /** Route polyline. Empty in list views, populated on the detail screen. */
   route: DrivePoint[];
 };
 
-/** A teen linked to a parent account. */
+/** A child in the same family, as the parent's Live tab sees them. */
 export type LinkedDriver = {
   id: string;
   name: string;
   /** Present only while they are on a drive. */
   activeDriveId: string | null;
-  lastSeenAt: number;
+  lastSeenAt: number | null;
   lastLocation: { lat: number; lon: number } | null;
   /** Rolling average of recent drives, 0–100. */
   weekScore: number;

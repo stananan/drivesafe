@@ -4,13 +4,15 @@ import { StyleSheet, View } from 'react-native';
 import { RoutePreview } from '@/components/route-preview';
 import { ThemedText } from '@/components/themed-text';
 import { Card } from '@/components/ui/card';
+import { QueryState } from '@/components/ui/query-state';
 import { ScoreBadge, scoreColor } from '@/components/ui/score-badge';
 import { Screen } from '@/components/ui/screen';
 import { Stat, StatRow } from '@/components/ui/stat';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { getDrive } from '@/lib/demo-data';
+import { getDrive } from '@/lib/drives';
 import { formatDuration, formatMiles, formatMph, formatWhen } from '@/lib/format';
+import { useAsync } from '@/lib/use-async';
 import type { DriveEvent } from '@/types/drive';
 
 const EVENT_LABELS: Record<DriveEvent['type'], string> = {
@@ -20,19 +22,20 @@ const EVENT_LABELS: Record<DriveEvent['type'], string> = {
   phone_distraction: 'Phone distraction',
 };
 
-/** Shared by both interfaces — a parent and their teen see the same trip detail. */
+/** Shared by both interfaces — a parent and their driver see the same trip detail. */
 export default function DriveDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const drive = getDrive(id);
+  const { data: drive, error, isLoading } = useAsync(() => getDrive(id), [id]);
 
-  if (!drive) {
+  if (isLoading || error || !drive) {
     return (
-      <Screen title="Drive not found" subtitle="This trip is no longer available.">
-        <Card>
-          <ThemedText type="small" themeColor="textSecondary">
-            The drive may have been deleted, or it belongs to another account.
-          </ThemedText>
-        </Card>
+      <Screen title="Drive" subtitle="">
+        <QueryState
+          isLoading={isLoading}
+          error={error}
+          isEmpty={!isLoading && !drive}
+          emptyMessage="This drive is no longer available, or it belongs to another family."
+        />
       </Screen>
     );
   }

@@ -12,12 +12,11 @@ import { SessionProvider, useSession } from '@/lib/session';
 SplashScreen.preventAutoHideAsync();
 
 /**
- * Holds the splash screen until the stored role has been read.
+ * Holds the splash screen until the stored session has been resolved.
  *
- * This lives in the root layout rather than on the welcome screen because the
- * app can cold-start on any route — a deep link, or a reload while the teen is
- * three tabs deep. Hiding the splash from a single screen leaves every other
- * entry point stuck behind it.
+ * This lives in the root layout rather than on one screen because the app can
+ * cold-start on any route — a deep link, or a reload three tabs deep. Hiding the
+ * splash from a single screen leaves every other entry point stuck behind it.
  */
 function SplashGate({ children }: { children: React.ReactNode }) {
   const { isLoading } = useSession();
@@ -30,7 +29,6 @@ function SplashGate({ children }: { children: React.ReactNode }) {
     });
   }, [isLoading]);
 
-  // Render nothing behind the splash rather than flashing an empty frame.
   if (isLoading) return null;
 
   return <>{children}</>;
@@ -48,8 +46,10 @@ export default function RootLayout() {
               <StatusBar style="auto" />
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" />
+                <Stack.Screen name="(auth)" />
+                <Stack.Screen name="family-setup" />
                 <Stack.Screen name="(parent)" />
-                <Stack.Screen name="(teen)" />
+                <Stack.Screen name="(child)" />
                 <Stack.Screen
                   name="drive/[id]"
                   options={{ headerShown: true, title: 'Drive detail', presentation: 'card' }}
