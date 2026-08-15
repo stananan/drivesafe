@@ -3,15 +3,16 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 
+import { AudioLevelGraph } from '@/components/audio-level-graph';
 import { AvatarPin } from '@/components/avatar-pin';
 import { ThemedText } from '@/components/themed-text';
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { QueryState } from '@/components/ui/query-state';
 import { Screen } from '@/components/ui/screen';
 import { Stat, StatRow } from '@/components/ui/stat';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useAudioLevelFeed } from '@/lib/audio-broadcast';
 import { getLiveDrive } from '@/lib/drives';
 import { formatDuration, formatMiles, formatMph, formatRelative } from '@/lib/format';
 import { getSupabase } from '@/lib/supabase';
@@ -93,6 +94,24 @@ export default function LiveDriveScreen() {
   const position = live.data?.position ?? null;
   const isActive = drive?.status === 'active';
 
+  // The driver's own loudness readings, streamed while they are recording.
+  const audioLevels = useAudioLevelFeed({
+    driveId: id ?? null,
+    enabled: Boolean(isActive && drive?.audioMonitoring),
+  });
+
+  // A finished drive is not a live drive. The moment the driver ends it, hand
+  // the parent the completed trip instead of leaving them on a dashboard whose
+  // numbers have stopped moving. `replace` rather than `push` so Back returns
+  // to the Live tab rather than to a dead screen.
+  const hasRedirected = useRef(false);
+  useEffect(() => {
+    if (!drive || drive.status !== 'completed' || hasRedirected.current) return;
+
+    hasRedirected.current = true;
+    router.replace({ pathname: '/drive/[id]', params: { id: drive.id } });
+  }, [drive, router]);
+
   // Ticks locally so the clock moves between heartbeats.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -134,8 +153,8 @@ export default function LiveDriveScreen() {
             Loud in the car
           </ThemedText>
           <ThemedText type="small" style={{ color: theme.onTint }}>
-            {recentLoud.detail} · {formatRelative(recentLoud.at)}. {drive.driverName} was warned on
-            their screen too.
+            You should call {drive.driverName}. It has been loud in the car since{' '}
+            {formatRelative(recentLoud.at)} — they were warned on their screen too.
           </ThemedText>
         </View>
       ) : null}
@@ -201,6 +220,25 @@ export default function LiveDriveScreen() {
         </ThemedText>
       </Card>
 
+      {isActive && drive.audioMonitoring ? (
+        <Card title="How loud it is in there">
+          <AudioLevelGraph levels={audioLevels} />
+          <ThemedText type="small" themeColor="textSecondary">
+            {audioLevels.length === 0
+              ? 'Waiting for readings from their phone.'
+              : 'Taller bars mean a louder car. The line is where DriveSafe starts warning them.'}
+          </ThemedText>
+        </Card>
+      ) : null}
+
+      <Card title="Listening in">
+        <ThemedText type="small" themeColor="textSecondary">
+          {live.data?.listenInEnabled
+            ? `${drive.driverName} has allowed you to listen to their car during a drive. The feature itself is not built yet — when it is, they will see an indicator the whole time it is open.`
+            : `${drive.driverName} has not turned on listening. Only they can allow it, from their profile — a parent cannot switch it on for them.`}
+        </ThemedText>
+      </Card>
+
       <Card title="Alerts" meta={`${drive.events.length}`}>
         {drive.events.length === 0 ? (
           <ThemedText type="small" themeColor="textSecondary">
@@ -232,19 +270,6 @@ export default function LiveDriveScreen() {
           </View>
         )}
       </Card>
-
-      {!isActive ? (
-        <Card title="Drive finished">
-          <ThemedText type="small" themeColor="textSecondary">
-            The full drive has the recorded route and the safety score.
-          </ThemedText>
-          <Button
-            label="Open drive detail"
-            variant="secondary"
-            onPress={() => router.push({ pathname: '/drive/[id]', params: { id: drive.id } })}
-          />
-        </Card>
-      ) : null}
     </Screen>
   );
 }

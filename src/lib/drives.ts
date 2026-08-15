@@ -155,6 +155,8 @@ export type LiveDrive = {
   drive: Drive;
   /** The driver's most recent published position, when they are sharing. */
   position: { lat: number; lon: number; at: number } | null;
+  /** Whether this driver has consented to a parent listening in. */
+  listenInEnabled: boolean;
 };
 
 /**
@@ -187,13 +189,14 @@ export async function getLiveDrive(driveId: string): Promise<LiveDrive | null> {
       .order('occurred_at', { ascending: false }),
     supabase
       .from('profiles')
-      .select('last_lat, last_lon, last_location_at, location_sharing')
+      .select('last_lat, last_lon, last_location_at, location_sharing, listen_in_enabled')
       .eq('id', row.driver_id)
       .maybeSingle<{
         last_lat: number | null;
         last_lon: number | null;
         last_location_at: string | null;
         location_sharing: boolean;
+        listen_in_enabled: boolean;
       }>(),
   ]);
 
@@ -206,6 +209,7 @@ export async function getLiveDrive(driveId: string): Promise<LiveDrive | null> {
 
   return {
     drive: toDrive(row, events),
+    listenInEnabled: profileRow?.listen_in_enabled ?? false,
     position: hasPosition
       ? {
           lat: profileRow.last_lat!,
@@ -396,6 +400,8 @@ export async function logDriveEvent(input: {
 
 export type FinishedDriveInput = {
   driveId: string;
+  /** Unix epoch milliseconds. Used to rate the distraction penalty. */
+  startedAt: number;
   endedAt: number;
   distanceMeters: number;
   topSpeed: number;
@@ -423,7 +429,10 @@ export async function finishDrive(input: FinishedDriveInput): Promise<void> {
   const supabase = requireSupabase();
 
   // Scored on the phone from the trace we just recorded — see SCORING.md.
-  const scored = scoreDrive(input.route, { loudAudioAlerts: input.loudAudioAlerts ?? 0 });
+  const scored = scoreDrive(input.route, {
+    loudAudioAlerts: input.loudAudioAlerts ?? 0,
+    durationSeconds: Math.max(0, (input.endedAt - input.startedAt) / 1000),
+  });
 
   const { error } = await supabase
     .from('drives')

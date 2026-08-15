@@ -38,6 +38,8 @@ type SessionValue = {
   leaveFamily: () => Promise<{ error: string | null }>;
   /** Permanently deletes the account and every drive attached to it. */
   deleteAccount: () => Promise<{ error: string | null }>;
+  /** Driver-only consent switch for parent listen-in. */
+  setListenIn: (enabled: boolean) => Promise<{ error: string | null }>;
 
   /** Re-reads the profile and family, e.g. after another device changes them. */
   refresh: () => Promise<void>;
@@ -50,6 +52,7 @@ type ProfileRow = {
   username: string;
   role: Role;
   family_id: string | null;
+  listen_in_enabled: boolean;
 };
 
 type FamilyRow = {
@@ -65,6 +68,7 @@ function toProfile(row: ProfileRow): Profile {
     username: row.username,
     role: row.role,
     familyId: row.family_id,
+    listenInEnabled: row.listen_in_enabled,
   };
 }
 
@@ -103,7 +107,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     const { data: profileRow, error } = await supabase
       .from('profiles')
-      .select('id, username, role, family_id')
+      .select('id, username, role, family_id, listen_in_enabled')
       .eq('id', userId)
       .maybeSingle<ProfileRow>();
 
@@ -293,6 +297,30 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return { error: null };
   }, [configError]);
 
+  const setListenIn = useCallback<SessionValue['setListenIn']>(
+    async (enabled) => {
+      const supabase = getSupabase();
+      if (!supabase || !session?.user.id) return { error: configError };
+
+      // Optimistic: the switch should move under the thumb, not after a round
+      // trip. A failure below puts it back.
+      setProfile((current) => (current ? { ...current, listenInEnabled: enabled } : current));
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ listen_in_enabled: enabled })
+        .eq('id', session.user.id);
+
+      if (error) {
+        setProfile((current) => (current ? { ...current, listenInEnabled: !enabled } : current));
+        return { error: friendlyAuthError(error) };
+      }
+
+      return { error: null };
+    },
+    [configError, session]
+  );
+
   const refresh = useCallback(async () => {
     await loadProfile(session?.user.id);
   }, [loadProfile, session]);
@@ -311,6 +339,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       joinFamily,
       leaveFamily,
       deleteAccount,
+      setListenIn,
       refresh,
     }),
     [
@@ -326,6 +355,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       joinFamily,
       leaveFamily,
       deleteAccount,
+      setListenIn,
       refresh,
     ]
   );

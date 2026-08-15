@@ -80,7 +80,13 @@ alter table public.profiles
   add column if not exists location_sharing boolean not null default true,
   -- Expo push token, so a driver's phone can notify their parents directly.
   -- Null until the device registers, and cleared when they decline the prompt.
-  add column if not exists push_token text;
+  add column if not exists push_token text,
+  -- Whether this driver permits a parent to listen to their car during a drive.
+  -- Off unless the driver turns it on themselves, and only ever writable by
+  -- them: consent that a parent could grant on a driver's behalf is not consent.
+  -- California is an all-party consent state, and a teenager's car usually has
+  -- passengers in it, so this switch is the whole legal basis for the feature.
+  add column if not exists listen_in_enabled boolean not null default false;
 
 create table if not exists public.drives (
   id              uuid primary key default gen_random_uuid(),
@@ -509,7 +515,14 @@ grant select on public.families, public.profiles to authenticated;
 -- Role and family changes therefore only happen inside the SECURITY DEFINER
 -- RPCs above, which run as the table owner and are unaffected by this grant.
 revoke update on public.profiles from authenticated;
-grant update (last_lat, last_lon, last_location_at, location_sharing, push_token)
+grant update (
+    last_lat,
+    last_lon,
+    last_location_at,
+    location_sharing,
+    push_token,
+    listen_in_enabled
+  )
   on public.profiles to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 

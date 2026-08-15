@@ -46,6 +46,15 @@ export const PrivacyPolicySections: PrivacySection[] = [
       'This feature is off by default. A driver turns it on themselves, one drive at a time, and can turn it off mid-drive.',
       'While it is on, DriveSafe reads your microphone’s level meter — a single number describing how loud the car is. It does not listen to, transcribe, analyse, store, or upload the audio itself. Because phones will only produce a level meter while a recording is active, a temporary file is written to your phone; DriveSafe deletes it as soon as monitoring stops, and it never leaves the device.',
       'If the car stays loud for a few seconds, DriveSafe warns the driver on screen and tells their parents that it happened. What gets saved and shared is the fact of the alert, when it happened, how loud it was, and where — never any sound.',
+      'While alerts are on, the loudness reading is also sent live to a parent watching that drive, about once a second, so they can see a graph of how noisy the car is. Those readings are not stored anywhere: they exist only while the drive is happening and are gone when the parent closes the screen.',
+    ],
+  },
+  {
+    title: 'Letting a parent listen in',
+    paragraphs: [
+      'DriveSafe has a setting that lets a driver allow a parent to listen to their car during a drive. It is off unless the driver turns it on, only the driver can change it, and a parent cannot switch it on for them.',
+      'The listening feature itself is not built yet — today the setting only records the driver’s answer. If it ships, the driver will see a clear indicator for as long as the microphone is open.',
+      'Anyone riding in the car can be heard when someone is listening, and they have not agreed to anything. That is why this is the driver’s decision alone, and why we would rather it stay off than be switched on casually.',
     ],
   },
   {

@@ -87,11 +87,6 @@ export function AudioLevelGraph({
         })}
       </View>
 
-      <View style={styles.caption}>
-        <ThemedText type="small" themeColor="textSecondary">
-          {Math.round(threshold)} dBFS alert line
-        </ThemedText>
-      </View>
     </View>
   );
 }
@@ -125,10 +120,5 @@ const styles = StyleSheet.create({
     right: 0,
     height: StyleSheet.hairlineWidth * 2,
     opacity: 0.8,
-  },
-  caption: {
-    position: 'absolute',
-    left: Spacing.two,
-    top: Spacing.one,
   },
 });
