@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, StyleSheet, Switch, View } from 'react-native';
 
 import { RoutePreview } from '@/components/route-preview';
 import { ThemedText } from '@/components/themed-text';
@@ -7,12 +7,31 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
 import { Stat, StatRow } from '@/components/ui/stat';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { saveDrive } from '@/lib/drives';
+import {
+  finishDrive,
+  heartbeatDrive,
+  logDriveEvent,
+  setDriveAudioMonitoring,
+  startDrive,
+} from '@/lib/drives';
 import { formatDuration, formatMiles, formatMph } from '@/lib/format';
+import { publishLocation } from '@/lib/locations';
+import { notifyFamilyParents } from '@/lib/notifications';
 import { useSession } from '@/lib/session';
+import { describeLevel, useAudioMonitor } from '@/lib/use-audio-monitor';
 import { useDriveTracker } from '@/lib/use-drive-tracker';
+
+/**
+ * How often the phone tells the family where it is and how the drive is going.
+ * GPS arrives about once a second; writing that often would be a lot of traffic
+ * for a dashboard that may well have nobody looking at it.
+ */
+const HEARTBEAT_MS = 10_000;
+
+/** The on-screen loud-noise warning clears itself rather than needing a tap. */
+const ALERT_VISIBLE_MS = 12_000;
 
 export default function DriveScreen() {
   const theme = useTheme();
@@ -21,9 +40,128 @@ export default function DriveScreen() {
 
   const [lastDriveSummary, setLastDriveSummary] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [driveId, setDriveId] = useState<string | null>(null);
+  const [loudAlert, setLoudAlert] = useState<{ at: number; level: number } | null>(null);
 
   const isRecording = tracker.status === 'recording';
   const isStarting = tracker.status === 'requesting';
+
+  // The heartbeat and the loud-audio handler both need the newest tracker
+  // numbers, but neither should re-arm every time a GPS fix lands.
+  const latest = useRef({ tracker, driveId, profile });
+  latest.current = { tracker, driveId, profile };
+
+  const handleLoud = useCallback((level: number) => {
+    const at = Date.now();
+    const { tracker: current, driveId: id, profile: who } = latest.current;
+
+    setLoudAlert({ at, level });
+
+    const detail = `Cabin noise ${describeLevel(level)} — ${Math.round(level)} dBFS`;
+
+    if (id) {
+      void logDriveEvent({
+        driveId: id,
+        type: 'loud_audio',
+        at,
+        detail,
+        lat: current.point?.lat,
+        lon: current.point?.lon,
+      }).catch(() => {
+        // The on-screen warning already did the urgent half of the job.
+      });
+    }
+
+    if (who?.familyId) {
+      void notifyFamilyParents({
+        familyId: who.familyId,
+        title: `${who.username} — loud in the car`,
+        body: 'DriveSafe heard sustained loud noise during this drive.',
+        data: { driveId: id, type: 'loud_audio' },
+      });
+    }
+  }, []);
+
+  const audio = useAudioMonitor({ enabled: isRecording && audioEnabled, onLoud: handleLoud });
+
+  // Clear the warning on its own so a driver never has to interact with it.
+  useEffect(() => {
+    if (!loudAlert) return;
+
+    const timer = setTimeout(() => setLoudAlert(null), ALERT_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [loudAlert]);
+
+  // Publish position and progress while recording, so the parent dashboard has
+  // something live to show.
+  useEffect(() => {
+    if (!isRecording || !driveId || !profile) return;
+
+    const userId = profile.id;
+
+    async function beat() {
+      const { tracker: current } = latest.current;
+      const seconds = Math.max(1, current.elapsedMs / 1000);
+
+      await heartbeatDrive({
+        driveId: driveId!,
+        distanceMeters: current.distanceMeters,
+        topSpeed: current.topSpeed,
+        avgSpeed: current.distanceMeters / seconds,
+        currentSpeed: current.speed,
+      });
+
+      if (current.point) {
+        await publishLocation({
+          userId,
+          lat: current.point.lat,
+          lon: current.point.lon,
+        });
+      }
+    }
+
+    // Once immediately, so the parent sees the drive appear rather than waiting
+    // out the first interval.
+    void beat().catch(() => {});
+    const timer = setInterval(() => void beat().catch(() => {}), HEARTBEAT_MS);
+
+    return () => clearInterval(timer);
+  }, [isRecording, driveId, profile]);
+
+  async function handleStart() {
+    if (!profile) return;
+
+    const startedAt = await tracker.start();
+    if (!startedAt) return;
+
+    try {
+      const id = await startDrive({
+        driverId: profile.id,
+        startedAt,
+        audioMonitoring: audioEnabled,
+      });
+
+      setDriveId(id);
+    } catch {
+      // Recording continues on the phone; only the live view is lost. The drive
+      // still saves at the end, because handleStop opens a row if none exists.
+      Alert.alert(
+        'Recording offline',
+        'DriveSafe could not reach the server, so your family will not see this drive live. It will still save when you finish.'
+      );
+    }
+  }
+
+  async function toggleAudio(next: boolean) {
+    setAudioEnabled(next);
+
+    if (driveId) {
+      void setDriveAudioMonitoring(driveId, next).catch(() => {
+        // A stale flag on the parent's screen is not worth an interruption.
+      });
+    }
+  }
 
   async function handleStop() {
     const summary = tracker.stop();
@@ -35,9 +173,18 @@ export default function DriveScreen() {
     setIsSaving(true);
 
     try {
-      await saveDrive({
-        driverId: profile.id,
-        startedAt: summary.startedAt,
+      // A drive that never got a row — the phone was offline at the start —
+      // still deserves to be saved.
+      const id =
+        driveId ??
+        (await startDrive({
+          driverId: profile.id,
+          startedAt: summary.startedAt,
+          audioMonitoring: audioEnabled,
+        }));
+
+      await finishDrive({
+        driveId: id,
         endedAt: summary.endedAt,
         distanceMeters: summary.distanceMeters,
         topSpeed: summary.topSpeed,
@@ -54,6 +201,8 @@ export default function DriveScreen() {
         error instanceof Error ? error.message : 'Check your connection and try again.'
       );
     } finally {
+      setDriveId(null);
+      setLoudAlert(null);
       setIsSaving(false);
     }
   }
@@ -66,6 +215,22 @@ export default function DriveScreen() {
           ? 'Keep your eyes on the road — DriveSafe has this.'
           : 'Start a drive and DriveSafe logs the route, speed, and safety events.'
       }>
+      {loudAlert ? (
+        <View
+          style={[
+            styles.alert,
+            { backgroundColor: theme.warning, borderColor: theme.warning },
+          ]}>
+          <ThemedText style={[styles.alertTitle, { color: theme.onTint }]}>
+            Keep it down
+          </ThemedText>
+          <ThemedText type="small" style={{ color: theme.onTint }}>
+            It got {describeLevel(loudAlert.level)} in here. Loud cabins make it easy to miss a
+            siren — your family has been told.
+          </ThemedText>
+        </View>
+      ) : null}
+
       <Card>
         <View style={styles.speedBlock}>
           <ThemedText
@@ -87,16 +252,53 @@ export default function DriveScreen() {
           <Button
             label={isSaving ? 'Saving…' : 'End drive'}
             variant="danger"
-            onPress={handleStop}
+            onPress={() => void handleStop()}
             loading={isSaving}
           />
         ) : (
           <Button
             label={isStarting ? 'Starting…' : 'Start drive'}
             loading={isStarting || isSaving}
-            onPress={tracker.start}
+            onPress={() => void handleStart()}
           />
         )}
+      </Card>
+
+      <Card title="Audio distraction alerts">
+        <View style={styles.toggleRow}>
+          <ThemedText type="small" style={styles.toggleLabel}>
+            {isRecording ? 'Listening for a loud cabin' : 'Listen for a loud cabin'}
+          </ThemedText>
+          <Switch
+            value={audioEnabled}
+            onValueChange={(next) => void toggleAudio(next)}
+            trackColor={{ true: theme.tint, false: theme.border }}
+          />
+        </View>
+
+        <ThemedText type="small" themeColor="textSecondary">
+          DriveSafe measures how loud it is using the microphone. Nothing is recorded, saved, or
+          uploaded — only the loudness reading leaves your phone, and only when it stays high.
+        </ThemedText>
+
+        {audio.status === 'monitoring' && audio.level !== null ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            Level {Math.round(audio.level)} dBFS · {describeLevel(audio.level)}
+          </ThemedText>
+        ) : null}
+
+        {audio.status === 'denied' ? (
+          <ThemedText type="small" style={{ color: theme.warning }}>
+            Microphone access is off, so DriveSafe cannot listen. Turn it on in your phone settings
+            to use this.
+          </ThemedText>
+        ) : null}
+
+        {audio.status === 'error' && audio.errorMessage ? (
+          <ThemedText type="small" style={{ color: theme.danger }}>
+            {audio.errorMessage}
+          </ThemedText>
+        ) : null}
       </Card>
 
       {tracker.status === 'denied' ? (
@@ -149,7 +351,6 @@ export default function DriveScreen() {
       {!isRecording ? (
         <Card title="Coming soon">
           <View style={styles.upcoming}>
-            <UpcomingRow label="Audio distraction alerts" detail="On-device, nothing recorded" />
             <UpcomingRow label="Rolling-buffer dashcam" detail="Keeps the last 60 seconds" />
             <UpcomingRow label='"DriveSafe, save that"' detail="Voice-triggered clip capture" />
           </View>
@@ -183,6 +384,26 @@ const styles = StyleSheet.create({
     lineHeight: 96,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+  },
+  alert: {
+    borderRadius: Radius.medium,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Spacing.three,
+    gap: Spacing.one,
+  },
+  alertTitle: {
+    fontSize: 19,
+    fontWeight: '700',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+    minHeight: 32,
+  },
+  toggleLabel: {
+    flexShrink: 1,
   },
   upcoming: {
     gap: Spacing.two,

@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import * as Location from 'expo-location';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import MapView, { Marker, type Region } from 'react-native-maps';
@@ -15,6 +15,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { listFamilyDrivers } from '@/lib/drives';
 import { formatRelative } from '@/lib/format';
 import { publishLocation } from '@/lib/locations';
+import { registerForPushNotifications } from '@/lib/notifications';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/use-async';
 import type { LinkedDriver } from '@/types/drive';
@@ -31,6 +32,7 @@ const REFRESH_INTERVAL_MS = 15_000;
 
 export default function ParentLiveScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { profile, family } = useSession();
 
@@ -75,6 +77,15 @@ export default function ParentLiveScreen() {
     return () => {
       cancelled = true;
     };
+  }, [profile]);
+
+  // Parents are the ones who get notified, so this is where the push token is
+  // claimed. Silently does nothing where push cannot work — Expo Go, or before
+  // `eas init` has given the project an id.
+  useEffect(() => {
+    if (!profile) return;
+
+    void registerForPushNotifications(profile.id);
   }, [profile]);
 
   useFocusEffect(
@@ -208,6 +219,13 @@ export default function ParentLiveScreen() {
                 driver={driver}
                 isSelected={selectedId === driver.id}
                 onPress={() => centerOn(driver)}
+                onWatchLive={() => {
+                  if (!driver.activeDriveId) return;
+                  router.push({
+                    pathname: '/live/[id]',
+                    params: { id: driver.activeDriveId },
+                  });
+                }}
               />
             ))}
           </ScrollView>
@@ -246,10 +264,12 @@ function DriverRow({
   driver,
   isSelected,
   onPress,
+  onWatchLive,
 }: {
   driver: LinkedDriver;
   isSelected: boolean;
   onPress: () => void;
+  onWatchLive: () => void;
 }) {
   const theme = useTheme();
   const isDriving = driver.activeDriveId !== null;
@@ -281,14 +301,32 @@ function DriverRow({
           type="small"
           style={{ color: isDriving ? theme.success : theme.textSecondary }}>
           {isDriving
-            ? 'Driving now'
+            ? driver.activeAudioMonitoring
+              ? 'Driving now · audio alerts on'
+              : 'Driving now'
             : hasLocation
               ? `Parked · updated ${formatRelative(driver.lastSeenAt ?? Date.now())}`
               : 'Not sharing location'}
         </ThemedText>
       </View>
 
-      <ScoreBadge score={driver.weekScore} showLabel={false} />
+      {isDriving ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Watch ${driver.name}'s drive`}
+          onPress={onWatchLive}
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.watchPill,
+            { backgroundColor: theme.tint, opacity: pressed ? 0.85 : 1 },
+          ]}>
+          <ThemedText type="small" style={{ color: theme.onTint, fontWeight: '600' }}>
+            Watch
+          </ThemedText>
+        </Pressable>
+      ) : (
+        <ScoreBadge score={driver.weekScore} showLabel={false} />
+      )}
     </Pressable>
   );
 }
@@ -357,6 +395,11 @@ const styles = StyleSheet.create({
   driverText: {
     flex: 1,
     gap: Spacing.half,
+  },
+  watchPill: {
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
   },
   onboarding: {
     gap: Spacing.three,
