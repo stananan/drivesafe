@@ -54,6 +54,10 @@ export default function RootLayout() {
                   name="drive/[id]"
                   options={{ headerShown: true, title: 'Drive detail', presentation: 'card' }}
                 />
+                <Stack.Screen
+                  name="privacy"
+                  options={{ headerShown: true, title: 'Privacy policy', presentation: 'card' }}
+                />
               </Stack>
             </SplashGate>
           </SessionProvider>

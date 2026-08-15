@@ -309,6 +309,35 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- Account deletion
+--
+-- Required by App Store Review guideline 5.1.1(v): an app that lets you create
+-- an account has to let you delete it from inside the app. A client holding the
+-- anon key cannot touch auth.users, so this runs SECURITY DEFINER as the table
+-- owner instead.
+--
+-- One delete is enough because the whole graph hangs off auth.users by
+-- ON DELETE CASCADE: profiles -> drives -> drive_points and drive_events. A
+-- parent's families row cascades too, which drops every member back to
+-- family_id null (profiles.family_id is ON DELETE SET NULL) without touching
+-- the drives they already recorded.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.delete_account()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+
+  delete from auth.users where id = auth.uid();
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- Row-level security
 --
 -- The rule in one sentence: you can always see yourself, you can see everyone
@@ -461,5 +490,6 @@ grant execute on function public.username_available(text) to anon, authenticated
 grant execute on function public.create_family(text) to authenticated;
 grant execute on function public.join_family(text) to authenticated;
 grant execute on function public.leave_family() to authenticated;
+grant execute on function public.delete_account() to authenticated;
 grant execute on function public.my_family_id() to authenticated;
 grant execute on function public.my_role() to authenticated;

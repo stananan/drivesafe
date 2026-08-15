@@ -36,6 +36,8 @@ type SessionValue = {
   createFamily: (name: string) => Promise<{ error: string | null }>;
   joinFamily: (code: string) => Promise<{ error: string | null }>;
   leaveFamily: () => Promise<{ error: string | null }>;
+  /** Permanently deletes the account and every drive attached to it. */
+  deleteAccount: () => Promise<{ error: string | null }>;
 
   /** Re-reads the profile and family, e.g. after another device changes them. */
   refresh: () => Promise<void>;
@@ -270,6 +272,27 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return { error: null };
   }, [configError, loadProfile, session]);
 
+  const deleteAccount = useCallback<SessionValue['deleteAccount']>(async () => {
+    const supabase = getSupabase();
+    if (!supabase) return { error: configError };
+
+    const { error } = await supabase.rpc('delete_account');
+    if (error) return { error: friendlyAuthError(error) };
+
+    // Same teardown as signOut: drop local state first so the router falls back
+    // to the auth screens instead of refetching a profile that no longer exists.
+    loadToken.current++;
+    setProfile(null);
+    setFamily(null);
+    setSession(null);
+
+    // The server-side user is already gone, so a global sign-out would only be
+    // a request against a dead session. Local scope clears the stored tokens.
+    await supabase.auth.signOut({ scope: 'local' });
+
+    return { error: null };
+  }, [configError]);
+
   const refresh = useCallback(async () => {
     await loadProfile(session?.user.id);
   }, [loadProfile, session]);
@@ -287,6 +310,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       createFamily,
       joinFamily,
       leaveFamily,
+      deleteAccount,
       refresh,
     }),
     [
@@ -301,6 +325,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       createFamily,
       joinFamily,
       leaveFamily,
+      deleteAccount,
       refresh,
     ]
   );
