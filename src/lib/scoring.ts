@@ -34,6 +34,16 @@ const JERK_COMFORT = 2.8;
 
 /** Harsh events are counted per this many seconds of driving. */
 const JERK_WINDOW_SECONDS = 600;
+
+/**
+ * Noise flags are counted over the drive's wall-clock length, floored at ten
+ * minutes. The floor is what stops a two-minute drive with one flag from
+ * producing a rate five times worse than the same flag on a ten-minute drive:
+ * short trips are not more distracted, they are just short. In practice this
+ * makes each flag cost about `WEIGHT_DISTRACTION` points on any drive up to ten
+ * minutes, tapering on longer ones.
+ */
+const DISTRACTION_WINDOW_SECONDS = 600;
 /** Two harsh samples closer than this are the same incident. */
 const JERK_COOLDOWN_MS = 5_000;
 
@@ -194,19 +204,37 @@ export function scoreDrive(
      * and have to be handed in by the caller.
      */
     loudAudioAlerts?: number;
+    /**
+     * Wall-clock length of the drive in seconds. Distraction is rated against
+     * this rather than against the analysable trace, because noise happens over
+     * the whole drive — including while stopped at lights, which contributes no
+     * usable trace at all.
+     */
+    durationSeconds?: number;
   } = {}
 ): DriveScore {
-  const { limitFor, loudAudioAlerts = 0 } = options;
+  const { limitFor, loudAudioAlerts = 0, durationSeconds = 0 } = options;
   const samples = analyzeTrace(route, limitFor);
 
   const totalSeconds = samples.reduce((sum, sample) => sum + sample.dt, 0);
+
+  // Counted per ten minutes for the same reason as hard stops: a loud spell is
+  // an incident that happens, not a state the drive is in, and averaging over
+  // total time would dissolve it on a long trip.
+  const distraction =
+    loudAudioAlerts /
+    (Math.max(durationSeconds, DISTRACTION_WINDOW_SECONDS) / DISTRACTION_WINDOW_SECONDS);
+
   if (samples.length === 0 || totalSeconds < 30) {
-    // Too little usable data to judge. Say so by returning a clean score rather
-    // than inventing a number from three noisy points. A drive this short is
-    // also too short to fairly penalise for noise — see SCORING.md.
+    // Too little usable trace to judge the *driving*. That is not a reason to
+    // ignore the noise: a stationary car with the stereo at full volume produces
+    // almost no trace, and letting that score a clean 100 would make the whole
+    // distraction term trivially avoidable.
+    const shortDrivePenalty = WEIGHT_DISTRACTION * distraction;
+
     return {
-      score: 100,
-      breakdown: { speeding: 0, cornering: 0, braking: 0, distraction: 0 },
+      score: Math.round(Math.max(0, Math.min(100, 100 - shortDrivePenalty))),
+      breakdown: { speeding: 0, cornering: 0, braking: 0, distraction },
       events: [],
       analyzedSeconds: totalSeconds,
     };
@@ -251,11 +279,6 @@ export function scoreDrive(
   const speeding = speedingWeighted / totalSeconds;
   const cornering = corneringWeighted / totalSeconds;
   const braking = jerkTotal / (totalSeconds / JERK_WINDOW_SECONDS);
-
-  // Counted per ten minutes for the same reason as hard stops: a loud spell is
-  // an incident that happens, not a state the drive is in, and averaging over
-  // total time would dissolve it on a long trip.
-  const distraction = loudAudioAlerts / (totalSeconds / JERK_WINDOW_SECONDS);
 
   const penalty =
     WEIGHT_SPEED * speeding +

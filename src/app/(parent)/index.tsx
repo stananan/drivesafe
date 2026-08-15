@@ -220,10 +220,10 @@ export default function ParentLiveScreen() {
             },
           ]}>
           <ThemedText style={[styles.alertTitle, { color: theme.onTint }]}>
-            {alert.driverName} — loud in the car
+            You should call {alert.driverName}
           </ThemedText>
           <ThemedText type="small" style={{ color: theme.onTint }}>
-            {alert.detail} · tap to watch the drive
+            It has got loud in the car while they are driving. Tap to watch the drive.
           </ThemedText>
         </Pressable>
       ) : null}

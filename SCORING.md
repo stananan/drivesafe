@@ -40,11 +40,19 @@ P_j = \frac{\sum_{\text{incidents}} f_j}{T / 600\text{s}}
 $$
 
 Distraction is counted the same way, for the same reason — a loud spell is
-something that happens, not a state the drive is in:
+something that happens, not a state the drive is in. It is rated against the
+drive's **wall-clock length** $T_{\text{drive}}$ rather than the analysable
+trace, floored at ten minutes:
 
 $$
-P_d = \frac{N_{\text{loud}}}{T / 600\text{s}}
+P_d = \frac{N_{\text{loud}}}{\max(T_{\text{drive}},\,600\text{s}) / 600\text{s}}
 $$
+
+Two details matter here. Using wall-clock time means noise while stopped at a
+light still counts, even though a stationary car contributes no usable trace.
+The floor means a two-minute drive with one flag is not scored five times worse
+than a ten-minute drive with the same flag — short trips are not more
+distracted, they are just short.
 
 **Why not a running total.** If penalties accumulated, a long drive would always
 score worse than a short one, and a driver's score would decay simply because
@@ -153,7 +161,7 @@ feature nobody enables.
 | Speeding | 10 | A whole drive at 5 mph over costs 10 points; at 10 over, 40. Most directly tied to crash severity, and the behaviour a driver fully controls. |
 | Cornering | 20 | A whole drive sustained at 6 m/s² (~0.6 g) lateral costs ~20 points. Weighted high per unit because sustaining that much lateral load is genuinely rare and genuinely dangerous. |
 | Braking | 8 | Five hard stops in a half-hour drive costs ~8 points. Real signal, but sometimes someone else's fault — weighted so a driver is not punished for one good emergency stop. |
-| Distraction | 6 | Two loud spells in a half-hour drive costs ~4 points. Lowest weight of the four: it measures the car's environment rather than the driving, and the alert threshold still needs road-test calibration. |
+| Distraction | 6 | Each noise flag costs ~6 points on a drive of ten minutes or less, tapering on longer ones (~2 points each on a half-hour drive). Lowest weight of the four: it measures the car's environment rather than the driving, and the alert threshold still needs road-test calibration. |
 
 Verified behaviour from `src/lib/scoring.ts` tests:
 
@@ -229,9 +237,10 @@ TomTom, Google Roads) have better coverage and cost money.
   read very differently in two cars. Until a road test pins this down, the
   distraction term is the least trustworthy of the four — which is part of why
   it carries the lowest weight.
-- **Distraction is skipped on very short drives.** Anything with under 30 s of
-  usable trace scores a clean 100 regardless, because there is not enough of a
-  drive to judge. A loud two-minute trip therefore goes unpenalised.
+- **Distraction is the one penalty that survives a thin trace.** Everything else
+  needs 30 s of usable GPS before it will score at all; noise flags apply even
+  without it, because a stationary car with the stereo at full volume produces
+  almost no trace and would otherwise score a clean 100.
 - **Context is invisible.** Braking hard because a child stepped out is scored
   the same as braking hard from tailgating. This is why braking is weighted
   lowest, and why the app shows *events* next to the number — the score starts a

@@ -79,8 +79,8 @@ export function useFamilyAlerts({ enabled }: { enabled: boolean }): {
             });
 
             await presentLocalAlert(
-              `${driverName} — loud in the car`,
-              'DriveSafe heard sustained loud noise during this drive.'
+              `You should call ${driverName}`,
+              'It has got loud in the car while they are driving.'
             );
           })();
         }

@@ -10,6 +10,7 @@ import { Screen } from '@/components/ui/screen';
 import { Stat, StatRow } from '@/components/ui/stat';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useAudioLevelBroadcast } from '@/lib/audio-broadcast';
 import {
   finishDrive,
   heartbeatDrive,
@@ -82,14 +83,22 @@ export default function DriveScreen() {
     if (who?.familyId) {
       void notifyFamilyParents({
         familyId: who.familyId,
-        title: `${who.username} — loud in the car`,
-        body: 'DriveSafe heard sustained loud noise during this drive.',
+        title: `You should call ${who.username}`,
+        body: 'It has got loud in the car while they are driving.',
         data: { driveId: id, type: 'loud_audio' },
       });
     }
   }, []);
 
   const audio = useAudioMonitor({ enabled: isRecording && audioEnabled, onLoud: handleLoud });
+
+  // Push the level to whoever is watching this drive. Ephemeral — nothing about
+  // this is written down, it only exists while a parent has the screen open.
+  useAudioLevelBroadcast({
+    driveId,
+    level: audio.level,
+    enabled: isRecording && audioEnabled,
+  });
 
   // Clear the warning on its own so a driver never has to interact with it.
   useEffect(() => {
@@ -191,6 +200,7 @@ export default function DriveScreen() {
 
       await finishDrive({
         driveId: id,
+        startedAt: summary.startedAt,
         endedAt: summary.endedAt,
         distanceMeters: summary.distanceMeters,
         topSpeed: summary.topSpeed,
@@ -289,16 +299,7 @@ export default function DriveScreen() {
           uploaded — only the loudness reading leaves your phone, and only when it stays high.
         </ThemedText>
 
-        {audio.status === 'monitoring' ? (
-          <>
-            <AudioLevelGraph levels={audio.levels} />
-            <ThemedText type="small" themeColor="textSecondary">
-              {audio.level === null
-                ? 'Waiting for the first reading…'
-                : `Now ${Math.round(audio.level)} dBFS · ${describeLevel(audio.level)}`}
-            </ThemedText>
-          </>
-        ) : null}
+        {audio.status === 'monitoring' ? <AudioLevelGraph levels={audio.levels} /> : null}
 
         {audio.status === 'denied' ? (
           <ThemedText type="small" style={{ color: theme.warning }}>

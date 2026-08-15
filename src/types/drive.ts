@@ -12,6 +12,8 @@ export type Profile = {
   role: Role;
   /** Null until the user creates or joins a family. */
   familyId: string | null;
+  /** Whether this driver lets a parent listen in during a drive. Off by default. */
+  listenInEnabled: boolean;
 };
 
 export type Family = {
