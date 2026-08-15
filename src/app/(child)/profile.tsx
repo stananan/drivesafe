@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
 import { AboutCard } from '@/components/about-card';
+import { DeleteAccountCard } from '@/components/delete-account-card';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -73,6 +74,8 @@ export default function ChildProfileScreen() {
         <Button label="Leave family" variant="secondary" onPress={confirmLeave} />
         <Button label="Sign out" variant="secondary" onPress={() => void signOut()} />
       </View>
+
+      <DeleteAccountCard />
     </Screen>
   );
 }
