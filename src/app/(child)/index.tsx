@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, Switch, View } from 'react-native';
 
+import { AudioLevelGraph } from '@/components/audio-level-graph';
 import { RoutePreview } from '@/components/route-preview';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
@@ -44,6 +45,10 @@ export default function DriveScreen() {
   const [driveId, setDriveId] = useState<string | null>(null);
   const [loudAlert, setLoudAlert] = useState<{ at: number; level: number } | null>(null);
 
+  // Counted here rather than read back from the database so a failed event
+  // insert cannot quietly erase the score penalty.
+  const loudCount = useRef(0);
+
   const isRecording = tracker.status === 'recording';
   const isStarting = tracker.status === 'requesting';
 
@@ -57,6 +62,7 @@ export default function DriveScreen() {
     const { tracker: current, driveId: id, profile: who } = latest.current;
 
     setLoudAlert({ at, level });
+    loudCount.current += 1;
 
     const detail = `Cabin noise ${describeLevel(level)} — ${Math.round(level)} dBFS`;
 
@@ -190,6 +196,7 @@ export default function DriveScreen() {
         topSpeed: summary.topSpeed,
         avgSpeed: summary.avgSpeed,
         route: summary.route,
+        loudAudioAlerts: loudCount.current,
       });
 
       setLastDriveSummary(`${miles} mi in ${duration} · saved`);
@@ -203,6 +210,7 @@ export default function DriveScreen() {
     } finally {
       setDriveId(null);
       setLoudAlert(null);
+      loudCount.current = 0;
       setIsSaving(false);
     }
   }
@@ -281,10 +289,15 @@ export default function DriveScreen() {
           uploaded — only the loudness reading leaves your phone, and only when it stays high.
         </ThemedText>
 
-        {audio.status === 'monitoring' && audio.level !== null ? (
-          <ThemedText type="small" themeColor="textSecondary">
-            Level {Math.round(audio.level)} dBFS · {describeLevel(audio.level)}
-          </ThemedText>
+        {audio.status === 'monitoring' ? (
+          <>
+            <AudioLevelGraph levels={audio.levels} />
+            <ThemedText type="small" themeColor="textSecondary">
+              {audio.level === null
+                ? 'Waiting for the first reading…'
+                : `Now ${Math.round(audio.level)} dBFS · ${describeLevel(audio.level)}`}
+            </ThemedText>
+          </>
         ) : null}
 
         {audio.status === 'denied' ? (

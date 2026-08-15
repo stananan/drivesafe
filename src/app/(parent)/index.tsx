@@ -18,6 +18,7 @@ import { publishLocation } from '@/lib/locations';
 import { registerForPushNotifications } from '@/lib/notifications';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/use-async';
+import { useFamilyAlerts } from '@/lib/use-family-alerts';
 import type { LinkedDriver } from '@/types/drive';
 
 /** Marin County, so an empty map still shows the district DriveSafe was built for. */
@@ -98,6 +99,17 @@ export default function ParentLiveScreen() {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
   );
+
+  // Loud-audio alerts arrive here over realtime, so a parent sitting on this
+  // tab sees them without waiting for the next poll.
+  const { alert, dismiss } = useFamilyAlerts({ enabled: Boolean(family) });
+
+  // A new alert means something is happening right now; pull the driver list so
+  // the row underneath flips to "Driving now" in the same beat.
+  useEffect(() => {
+    if (alert) void drivers.reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alert]);
 
   const driverList = useMemo(() => drivers.data ?? [], [drivers.data]);
   const located = useMemo(
@@ -191,6 +203,30 @@ export default function ParentLiveScreen() {
           </View>
         </View>
       </View>
+
+      {alert ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            dismiss();
+            router.push({ pathname: '/live/[id]', params: { id: alert.driveId } });
+          }}
+          style={({ pressed }) => [
+            styles.alertBanner,
+            {
+              backgroundColor: theme.warning,
+              bottom: BottomTabInset + insets.bottom + Spacing.three,
+              opacity: pressed ? 0.9 : 1,
+            },
+          ]}>
+          <ThemedText style={[styles.alertTitle, { color: theme.onTint }]}>
+            {alert.driverName} — loud in the car
+          </ThemedText>
+          <ThemedText type="small" style={{ color: theme.onTint }}>
+            {alert.detail} · tap to watch the drive
+          </ThemedText>
+        </Pressable>
+      ) : null}
 
       <View style={[styles.sheet, { backgroundColor: theme.background }]}>
         {noDriversYet ? (
@@ -400,6 +436,25 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
+  },
+  // Floats over the driver list rather than pushing it around, so an alert
+  // arriving mid-scroll does not move what the parent is already reading.
+  alertBanner: {
+    position: 'absolute',
+    left: Spacing.three,
+    right: Spacing.three,
+    borderRadius: Radius.medium,
+    padding: Spacing.three,
+    gap: Spacing.half,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  alertTitle: {
+    fontSize: 17,
+    fontWeight: '700',
   },
   onboarding: {
     gap: Spacing.three,

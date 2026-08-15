@@ -4,15 +4,18 @@
  * The full derivation and the reasoning behind every constant lives in
  * `SCORING.md`. The short version:
  *
- *   score = 100 − clamp( W_speed·P_speed + W_lat·P_lat + W_jerk·P_jerk , 0, 100 )
+ *   score = 100 − clamp( W_speed·P_speed + W_lat·P_lat + W_jerk·P_jerk
+ *                        + W_dist·P_dist , 0, 100 )
  *
  * Every penalty is a *rate* — exposure per minute of driving — so a long trip is
  * not punished for being long, and a driver cannot dilute one bad stretch by
  * padding the drive with motorway cruising.
  *
- * Everything here is computed from the GPS trace alone. Curvature comes from the
- * geometry of the points themselves, which is what lets the score understand
- * "too fast for this bend" without any road database at all.
+ * The first three terms are computed from the GPS trace alone. Curvature comes
+ * from the geometry of the points themselves, which is what lets the score
+ * understand "too fast for this bend" without any road database at all. The
+ * fourth, distraction, is the one thing the trace cannot see: it counts the
+ * sustained loud-audio alerts the microphone raised, and the caller supplies it.
  */
 
 import { haversineMeters } from '@/lib/format';
@@ -40,6 +43,10 @@ const WEIGHT_SPEED = 10.0;
 const WEIGHT_LATERAL = 20.0;
 // Roughly 8 points for five hard stops in a half-hour drive.
 const WEIGHT_JERK = 8.0;
+// Two sustained loud spells in a half-hour drive costs about 4 points. Noise is
+// a real distraction, but it is not evidence of bad *driving* the way a hard
+// stop is, so it is weighted below the kinematic penalties on purpose.
+const WEIGHT_DISTRACTION = 6.0;
 
 /** Fixes worse than this are too noisy to derive curvature from. */
 const MAX_ACCURACY_METERS = 30;
@@ -72,6 +79,7 @@ export type DriveScore = {
     speeding: number;
     cornering: number;
     braking: number;
+    distraction: number;
   };
   events: Omit<DriveEvent, 'id'>[];
   /** Seconds of usable trace the score was computed from. */
@@ -176,16 +184,29 @@ export function analyzeTrace(route: DrivePoint[], limitFor?: SpeedLimitProvider)
  * the drive rather than a total, which is what keeps the score comparable
  * between a ten-minute errand and a two-hour road trip.
  */
-export function scoreDrive(route: DrivePoint[], limitFor?: SpeedLimitProvider): DriveScore {
+export function scoreDrive(
+  route: DrivePoint[],
+  options: {
+    limitFor?: SpeedLimitProvider;
+    /**
+     * How many sustained loud-audio alerts fired during the drive. These come
+     * from the microphone rather than the trace, so they cannot be derived here
+     * and have to be handed in by the caller.
+     */
+    loudAudioAlerts?: number;
+  } = {}
+): DriveScore {
+  const { limitFor, loudAudioAlerts = 0 } = options;
   const samples = analyzeTrace(route, limitFor);
 
   const totalSeconds = samples.reduce((sum, sample) => sum + sample.dt, 0);
   if (samples.length === 0 || totalSeconds < 30) {
     // Too little usable data to judge. Say so by returning a clean score rather
-    // than inventing a number from three noisy points.
+    // than inventing a number from three noisy points. A drive this short is
+    // also too short to fairly penalise for noise — see SCORING.md.
     return {
       score: 100,
-      breakdown: { speeding: 0, cornering: 0, braking: 0 },
+      breakdown: { speeding: 0, cornering: 0, braking: 0, distraction: 0 },
       events: [],
       analyzedSeconds: totalSeconds,
     };
@@ -231,8 +252,16 @@ export function scoreDrive(route: DrivePoint[], limitFor?: SpeedLimitProvider): 
   const cornering = corneringWeighted / totalSeconds;
   const braking = jerkTotal / (totalSeconds / JERK_WINDOW_SECONDS);
 
+  // Counted per ten minutes for the same reason as hard stops: a loud spell is
+  // an incident that happens, not a state the drive is in, and averaging over
+  // total time would dissolve it on a long trip.
+  const distraction = loudAudioAlerts / (totalSeconds / JERK_WINDOW_SECONDS);
+
   const penalty =
-    WEIGHT_SPEED * speeding + WEIGHT_LATERAL * cornering + WEIGHT_JERK * braking;
+    WEIGHT_SPEED * speeding +
+    WEIGHT_LATERAL * cornering +
+    WEIGHT_JERK * braking +
+    WEIGHT_DISTRACTION * distraction;
 
   const score = Math.round(Math.max(0, Math.min(100, 100 - penalty)));
 
@@ -241,7 +270,7 @@ export function scoreDrive(route: DrivePoint[], limitFor?: SpeedLimitProvider): 
 
   return {
     score,
-    breakdown: { speeding, cornering, braking },
+    breakdown: { speeding, cornering, braking, distraction },
     events,
     analyzedSeconds: totalSeconds,
   };

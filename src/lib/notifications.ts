@@ -82,6 +82,24 @@ export async function storePushToken(userId: string, token: string | null): Prom
   await supabase.from('profiles').update({ push_token: token }).eq('id', userId);
 }
 
+/**
+ * Raises a notification from this device, for this device.
+ *
+ * Unlike push, local notifications still work in Expo Go, so this is what makes
+ * a parent's alert visible today while they have the app open on another tab.
+ * It cannot reach a phone whose app is fully suspended — that is push's job.
+ */
+export async function presentLocalAlert(title: string, body: string): Promise<void> {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: { title, body, sound: true },
+      trigger: null,
+    });
+  } catch {
+    // No permission, or a platform that refuses. The in-app banner still shows.
+  }
+}
+
 type PushMessage = {
   to: string;
   title: string;

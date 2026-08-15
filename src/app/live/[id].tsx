@@ -25,6 +25,9 @@ import type { DriveEvent } from '@/types/drive';
  */
 const REFRESH_MS = 5_000;
 
+/** How long a loud-audio alert stays banner-worthy rather than just list-worthy. */
+const RECENT_ALERT_MS = 3 * 60_000;
+
 const EVENT_LABELS: Record<DriveEvent['type'], string> = {
   speeding: 'Speeding',
   hard_brake: 'Hard brake',
@@ -114,10 +117,29 @@ export default function LiveDriveScreen() {
 
   const duration = (drive.endedAt ?? now) - drive.startedAt;
 
+  // Events come back newest first, so the first match is the latest one.
+  const recentLoud = isActive
+    ? drive.events.find(
+        (event) => event.type === 'loud_audio' && now - event.at < RECENT_ALERT_MS
+      )
+    : undefined;
+
   return (
     <Screen
       title={drive.driverName}
       subtitle={isActive ? 'Driving right now' : 'This drive has finished.'}>
+      {recentLoud ? (
+        <View style={[styles.alert, { backgroundColor: theme.warning }]}>
+          <ThemedText style={[styles.alertTitle, { color: theme.onTint }]}>
+            Loud in the car
+          </ThemedText>
+          <ThemedText type="small" style={{ color: theme.onTint }}>
+            {recentLoud.detail} · {formatRelative(recentLoud.at)}. {drive.driverName} was warned on
+            their screen too.
+          </ThemedText>
+        </View>
+      ) : null}
+
       <Card>
         {position ? (
           <View style={styles.mapWrap}>
@@ -228,6 +250,15 @@ export default function LiveDriveScreen() {
 }
 
 const styles = StyleSheet.create({
+  alert: {
+    borderRadius: Radius.medium,
+    padding: Spacing.three,
+    gap: Spacing.half,
+  },
+  alertTitle: {
+    fontSize: 19,
+    fontWeight: '700',
+  },
   mapWrap: {
     height: 260,
     borderRadius: Radius.medium,

@@ -401,6 +401,12 @@ export type FinishedDriveInput = {
   topSpeed: number;
   avgSpeed: number;
   route: DrivePoint[];
+  /**
+   * Loud-audio alerts raised during the drive. Counted on the phone as they
+   * happen rather than read back from the database, so a failed event insert
+   * cannot quietly erase the penalty.
+   */
+  loudAudioAlerts?: number;
 };
 
 /**
@@ -417,7 +423,7 @@ export async function finishDrive(input: FinishedDriveInput): Promise<void> {
   const supabase = requireSupabase();
 
   // Scored on the phone from the trace we just recorded — see SCORING.md.
-  const scored = scoreDrive(input.route);
+  const scored = scoreDrive(input.route, { loudAudioAlerts: input.loudAudioAlerts ?? 0 });
 
   const { error } = await supabase
     .from('drives')

@@ -34,10 +34,12 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
 
 - [ ] **Calibrate the audio thresholds.** `LOUD_THRESHOLD_DBFS = -12`,
   `SUSTAIN_MS = 1500`, and `COOLDOWN_MS = 60000` in
-  `src/lib/use-audio-monitor.ts` are guesses. Sit in the car with the level
-  readout on the drive screen, note what normal conversation, the radio, and
-  actual shouting read, then set the threshold between them. Different phones
-  and mounting positions read very differently.
+  `src/lib/use-audio-monitor.ts` are guesses. The drive screen now draws a live
+  graph with the alert line on it for exactly this: sit in the car, watch where
+  normal conversation, the stereo, and actual shouting land relative to the
+  line, and move the constant between them. Different phones and mounting
+  positions read very differently. The safety score depends on this being
+  right — see the distraction term in `SCORING.md`.
 - [ ] **Test push end to end on a dev build.** Expo Go dropped remote push in
   SDK 53, so notifications will not arrive there. `eas build --profile
   development` on both a parent phone and a driver phone, then trigger a loud
@@ -73,6 +75,18 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
   token behind. Expo's push receipts report `DeviceNotRegistered`; we do not
   read receipts at all yet.
 - [ ] Audio monitoring stops if the driver backgrounds the app, same as GPS.
+
+## Considered and parked
+
+- **Let a parent listen in live, like a call.** Technically buildable (WebRTC via
+  a dev build, plus an SFU), but parked deliberately. California is a two-party
+  consent state (Penal Code §632), and a teenager's car routinely contains
+  friends who never agreed to anything — so live audio to a parent risks
+  recording third parties unlawfully. It is also the kind of covert-listening
+  capability App Review treats as spyware, and it contradicts the "we never
+  record audio" promise that makes the current feature defensible. If it is ever
+  revisited, it must be driver-initiated only, with an unmissable in-car
+  indicator while the mic is open. See the discussion in the commit history.
 
 ## Nice to have
 

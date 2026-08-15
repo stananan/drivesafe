@@ -11,11 +11,15 @@ Implementation: `src/lib/scoring.ts`.
 ## The equation
 
 $$
-\text{score} = 100 - \min\!\Big(100,\; W_s P_s + W_\ell P_\ell + W_j P_j\Big)
+\text{score} = 100 - \min\!\Big(100,\; W_s P_s + W_\ell P_\ell + W_j P_j + W_d P_d\Big)
 $$
 
-Three penalties: **speeding**, **cornering**, and **harsh braking/acceleration**.
-None of them is a running total.
+Four penalties: **speeding**, **cornering**, **harsh braking/acceleration**, and
+**distraction**. None of them is a running total.
+
+The first three come from the GPS trace alone. Distraction is the exception: it
+counts the sustained loud-audio alerts raised by the microphone during the
+drive, which the trace cannot see, so the caller passes the count in.
 
 Speeding and cornering are *states* — things you are doing for a stretch of road
 — so they are *time-weighted means* over the drive:
@@ -33,6 +37,13 @@ so those are counted **per ten minutes** instead:
 
 $$
 P_j = \frac{\sum_{\text{incidents}} f_j}{T / 600\text{s}}
+$$
+
+Distraction is counted the same way, for the same reason — a loud spell is
+something that happens, not a state the drive is in:
+
+$$
+P_d = \frac{N_{\text{loud}}}{T / 600\text{s}}
 $$
 
 **Why not a running total.** If penalties accumulated, a long drive would always
@@ -115,6 +126,26 @@ classic proxy for following too closely or not reading the road ahead; hard
 acceleration is the classic proxy for aggression. Both are well-established
 telematics signals — it is roughly what insurers' black boxes measure.
 
+### 4. Distraction
+
+$$
+N_{\text{loud}} = \text{count of sustained loud-audio alerts}
+$$
+
+Not derived from the trace. While a driver has audio alerts switched on,
+DriveSafe reads the microphone's level meter; noise that stays above the alert
+threshold for a sustained window raises one alert, rate-limited to one a minute.
+$N_{\text{loud}}$ is how many fired.
+
+**Why it counts at all.** A loud cabin is a documented crash risk factor — it
+masks sirens and horns, and passenger noise is one of the strongest predictors
+of teen-driver crashes specifically. **Why it counts less than the rest.** Noise
+is evidence of a distracting *environment*, not of bad driving, and some of it is
+not the driver's doing. It is weighted below every kinematic term on purpose,
+and it is the one term a driver can switch off entirely by leaving audio alerts
+off — a deliberate trade, since a feature that punishes you for enabling it is a
+feature nobody enables.
+
 ### Weights
 
 | Term | Weight | What it means in practice |
@@ -122,6 +153,7 @@ telematics signals — it is roughly what insurers' black boxes measure.
 | Speeding | 10 | A whole drive at 5 mph over costs 10 points; at 10 over, 40. Most directly tied to crash severity, and the behaviour a driver fully controls. |
 | Cornering | 20 | A whole drive sustained at 6 m/s² (~0.6 g) lateral costs ~20 points. Weighted high per unit because sustaining that much lateral load is genuinely rare and genuinely dangerous. |
 | Braking | 8 | Five hard stops in a half-hour drive costs ~8 points. Real signal, but sometimes someone else's fault — weighted so a driver is not punished for one good emergency stop. |
+| Distraction | 6 | Two loud spells in a half-hour drive costs ~4 points. Lowest weight of the four: it measures the car's environment rather than the driving, and the alert threshold still needs road-test calibration. |
 
 Verified behaviour from `src/lib/scoring.ts` tests:
 
@@ -172,7 +204,7 @@ OSM tags roads with `maxspeed`, it is free, and it needs no API key.
 5. **Cache by segment.** Families drive the same roads daily; a small local cache
    keyed by rounded coordinate collapses almost all repeat lookups.
 
-The seam already exists — `scoreDrive(route, limitFor?)` takes a
+The seam already exists — `scoreDrive(route, { limitFor })` takes a
 `SpeedLimitProvider`. Adding OSM means writing that one function; the equation
 and every call site stay untouched.
 
@@ -191,6 +223,15 @@ TomTom, Google Roads) have better coverage and cost money.
   4.5 mph where heading is meaningful.
 - **We cannot tell who was driving.** A passenger's phone records the same trip.
   Handling that properly needs Bluetooth-to-car pairing or motion classification.
+- **The distraction threshold is uncalibrated.** The alert fires above −12 dBFS
+  sustained for 1.5 s, which is a starting guess. Microphone sensitivity varies
+  enormously between phones and mounting positions, so the same conversation can
+  read very differently in two cars. Until a road test pins this down, the
+  distraction term is the least trustworthy of the four — which is part of why
+  it carries the lowest weight.
+- **Distraction is skipped on very short drives.** Anything with under 30 s of
+  usable trace scores a clean 100 regardless, because there is not enough of a
+  drive to judge. A loud two-minute trip therefore goes unpenalised.
 - **Context is invisible.** Braking hard because a child stepped out is scored
   the same as braking hard from tailgating. This is why braking is weighted
   lowest, and why the app shows *events* next to the number — the score starts a
