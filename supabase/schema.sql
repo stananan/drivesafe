@@ -31,6 +31,20 @@ begin
   end if;
 end $$;
 
+-- Added after the first release, so it cannot go in the create above without
+-- breaking every project that already ran this file.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_enum e
+    join pg_type t on t.oid = e.enumtypid
+    where t.typname = 'drive_event_type' and e.enumlabel = 'loud_audio'
+  ) then
+    alter type public.drive_event_type add value 'loud_audio';
+  end if;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- Tables
 -- ---------------------------------------------------------------------------
@@ -63,7 +77,10 @@ alter table public.profiles
   add column if not exists last_lon double precision,
   add column if not exists last_location_at timestamptz,
   -- Anyone can stop broadcasting without leaving the family.
-  add column if not exists location_sharing boolean not null default true;
+  add column if not exists location_sharing boolean not null default true,
+  -- Expo push token, so a driver's phone can notify their parents directly.
+  -- Null until the device registers, and cleared when they decline the prompt.
+  add column if not exists push_token text;
 
 create table if not exists public.drives (
   id              uuid primary key default gen_random_uuid(),
@@ -80,6 +97,17 @@ create table if not exists public.drives (
   safety_score    smallint not null default 100 check (safety_score between 0 and 100),
   created_at      timestamptz not null default now()
 );
+
+-- Live-drive columns. A drive row is now written when the drive *starts*, so a
+-- parent has something to watch; these carry the state that only matters while
+-- ended_at is still null.
+alter table public.drives
+  -- Whether the driver had audio distraction alerts switched on for this drive.
+  -- Kept per drive rather than per profile so history stays truthful about what
+  -- was actually being monitored at the time.
+  add column if not exists audio_monitoring boolean not null default false,
+  -- Most recent speed sample, metres per second. Only meaningful mid-drive.
+  add column if not exists current_speed double precision not null default 0;
 
 create index if not exists drives_driver_started_idx
   on public.drives (driver_id, started_at desc);
@@ -481,7 +509,7 @@ grant select on public.families, public.profiles to authenticated;
 -- Role and family changes therefore only happen inside the SECURITY DEFINER
 -- RPCs above, which run as the table owner and are unaffected by this grant.
 revoke update on public.profiles from authenticated;
-grant update (last_lat, last_lon, last_location_at, location_sharing)
+grant update (last_lat, last_lon, last_location_at, location_sharing, push_token)
   on public.profiles to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 
@@ -491,5 +519,31 @@ grant execute on function public.create_family(text) to authenticated;
 grant execute on function public.join_family(text) to authenticated;
 grant execute on function public.leave_family() to authenticated;
 grant execute on function public.delete_account() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Realtime
+--
+-- The parent's live drive dashboard subscribes to these two tables so a loud
+-- audio alert or the end of a drive lands without waiting for the next poll.
+-- Realtime still applies the policies above, so a subscription only ever
+-- delivers rows the subscriber could have selected anyway.
+-- ---------------------------------------------------------------------------
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'drives'
+  ) then
+    alter publication supabase_realtime add table public.drives;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'drive_events'
+  ) then
+    alter publication supabase_realtime add table public.drive_events;
+  end if;
+end $$;
 grant execute on function public.my_family_id() to authenticated;
 grant execute on function public.my_role() to authenticated;

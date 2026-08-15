@@ -36,13 +36,23 @@ export const PrivacyPolicySections: PrivacySection[] = [
       'Recorded drives: while a drive is recording, DriveSafe saves GPS coordinates, speed, accuracy, and timestamps as your position updates. Together these make the route shown on the drive detail screen.',
       'Drive summaries: distance, duration, top speed, average speed, a safety score, and flagged moments such as speeding, hard braking, or rapid acceleration.',
       'Live location: while location sharing is on, DriveSafe stores your most recent position so your family can see you on the map. Only the latest position is kept — each update overwrites the one before it, so this is not a location history.',
+      'How loud it is, only if you turn audio alerts on: see the section below.',
+      'Notification tokens: if you allow notifications, DriveSafe stores the anonymous token your phone issues, so a driver’s phone can send an alert to their parents.',
+    ],
+  },
+  {
+    title: 'Audio distraction alerts',
+    paragraphs: [
+      'This feature is off by default. A driver turns it on themselves, one drive at a time, and can turn it off mid-drive.',
+      'While it is on, DriveSafe reads your microphone’s level meter — a single number describing how loud the car is. It does not listen to, transcribe, analyse, store, or upload the audio itself. Because phones will only produce a level meter while a recording is active, a temporary file is written to your phone; DriveSafe deletes it as soon as monitoring stops, and it never leaves the device.',
+      'If the car stays loud for a few seconds, DriveSafe warns the driver on screen and tells their parents that it happened. What gets saved and shared is the fact of the alert, when it happened, how loud it was, and where — never any sound.',
     ],
   },
   {
     title: 'What DriveSafe does not collect',
     paragraphs: [
-      'DriveSafe does not use your microphone, camera, contacts, or photos, and does not collect advertising identifiers. It contains no third-party analytics, advertising, or tracking software.',
-      'On-device audio distraction detection is shown in the app as an upcoming feature. It is not implemented, and nothing is recorded or listened to today.',
+      'DriveSafe does not use your camera, contacts, or photos, and does not collect advertising identifiers. It contains no third-party analytics, advertising, or tracking software.',
+      'It never records, keeps, or transmits audio. The microphone is read only as a loudness meter, only during a drive, and only when the driver has switched audio alerts on.',
     ],
   },
   {
@@ -56,7 +66,7 @@ export const PrivacyPolicySections: PrivacySection[] = [
     title: 'Who can see your data',
     paragraphs: [
       "Only you and the members of your family. Family membership is enforced in the database itself through row-level security, so one family can never read another family's drives, positions, or profiles.",
-      'Parents in your family can see your recorded drives and their routes, your safety scores, and your live position while sharing is on.',
+      'Parents in your family can see your recorded drives and their routes, your safety scores, your live position while sharing is on, whether a drive is happening right now, and any alerts raised during it.',
       'We do not share personal data with anyone else, and we never sell it.',
     ],
   },

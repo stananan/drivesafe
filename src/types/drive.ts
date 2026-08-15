@@ -35,7 +35,12 @@ export type DrivePoint = {
 };
 
 /** Something worth telling a parent about, detected during a drive. */
-export type DriveEventType = 'speeding' | 'hard_brake' | 'rapid_accel' | 'phone_distraction';
+export type DriveEventType =
+  | 'speeding'
+  | 'hard_brake'
+  | 'rapid_accel'
+  | 'phone_distraction'
+  | 'loud_audio';
 
 export type DriveEvent = {
   id: string;
@@ -65,8 +70,12 @@ export type Drive = {
   topSpeed: number;
   /** Metres per second. */
   avgSpeed: number;
-  /** 0–100, higher is safer. */
+  /** 0–100, higher is safer. Provisional until the drive ends. */
   safetyScore: number;
+  /** Whether audio distraction alerts were on for this drive. */
+  audioMonitoring: boolean;
+  /** Metres per second at the last heartbeat. Only meaningful while active. */
+  currentSpeed: number;
   events: DriveEvent[];
   /** Route polyline. Empty in list views, populated on the detail screen. */
   route: DrivePoint[];
@@ -78,6 +87,8 @@ export type LinkedDriver = {
   name: string;
   /** Present only while they are on a drive. */
   activeDriveId: string | null;
+  /** Whether the drive in progress has audio alerts on. Null when parked. */
+  activeAudioMonitoring: boolean | null;
   lastSeenAt: number | null;
   lastLocation: { lat: number; lon: number } | null;
   /** Rolling average of recent drives, 0–100. */

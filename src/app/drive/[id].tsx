@@ -20,6 +20,7 @@ const EVENT_LABELS: Record<DriveEvent['type'], string> = {
   hard_brake: 'Hard brake',
   rapid_accel: 'Rapid acceleration',
   phone_distraction: 'Phone distraction',
+  loud_audio: 'Loud in the car',
 };
 
 /** Shared by both interfaces — a parent and their driver see the same trip detail. */

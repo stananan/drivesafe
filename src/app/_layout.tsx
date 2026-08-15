@@ -55,6 +55,10 @@ export default function RootLayout() {
                   options={{ headerShown: true, title: 'Drive detail', presentation: 'card' }}
                 />
                 <Stack.Screen
+                  name="live/[id]"
+                  options={{ headerShown: true, title: 'Live drive', presentation: 'card' }}
+                />
+                <Stack.Screen
                   name="privacy"
                   options={{ headerShown: true, title: 'Privacy policy', presentation: 'card' }}
                 />

@@ -2,9 +2,14 @@
  * The live drive recorder.
  *
  * Subscribes to high-accuracy GPS while a drive is running and folds each fix
- * into a running summary (distance, top speed, average speed). Everything stays
- * in memory for now; persisting the finished drive to Supabase is the next step
- * on the roadmap, and `stop()` already returns the exact shape that upload needs.
+ * into a running summary (distance, top speed, average speed). This hook owns
+ * only what is happening on the phone — the drive screen decides what to persist
+ * and when, using `stop()`'s summary as the shape to upload.
+ *
+ * Recording is foreground-only: `watchPositionAsync` with a when-in-use
+ * permission stops delivering once the app leaves the screen. That is why the
+ * keep-awake lock below exists, and why the app declares no background location
+ * entitlement. Making this survive a locked phone is tracked in TODO.md.
  */
 
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -46,7 +51,13 @@ export type DriveTracker = {
   route: DrivePoint[];
   pointCount: number;
   errorMessage: string | null;
-  start: () => Promise<void>;
+  /**
+   * Resolves to the drive's start time once GPS is actually flowing, or null if
+   * permission was refused or the subscription failed. Returning the timestamp
+   * rather than a boolean means the caller can open the drive row without
+   * reading back state that has not re-rendered yet.
+   */
+  start: () => Promise<number | null>;
   stop: () => DriveSummary | null;
 };
 
@@ -97,7 +108,7 @@ export function useDriveTracker(): DriveTracker {
     return () => clearInterval(id);
   }, [status]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (): Promise<number | null> => {
     setStatus('requesting');
     setErrorMessage(null);
 
@@ -106,7 +117,7 @@ export function useDriveTracker(): DriveTracker {
 
       if (permission !== Location.PermissionStatus.GRANTED) {
         setStatus('denied');
-        return;
+        return null;
       }
 
       routeRef.current = [];
@@ -165,10 +176,12 @@ export function useDriveTracker(): DriveTracker {
       );
 
       setStatus('recording');
+      return startedAtRef.current;
     } catch (error) {
       teardown();
       setStatus('error');
       setErrorMessage(error instanceof Error ? error.message : 'Could not start location updates.');
+      return null;
     }
   }, [teardown]);
 
@@ -177,15 +190,15 @@ export function useDriveTracker(): DriveTracker {
     setStatus('idle');
     setSpeed(0);
 
-    const startedAt = startedAtRef.current;
+    const begunAt = startedAtRef.current;
     startedAtRef.current = null;
-    if (!startedAt) return null;
+    if (!begunAt) return null;
 
     const endedAt = Date.now();
-    const seconds = Math.max(1, (endedAt - startedAt) / 1000);
+    const seconds = Math.max(1, (endedAt - begunAt) / 1000);
 
     return {
-      startedAt,
+      startedAt: begunAt,
       endedAt,
       distanceMeters,
       topSpeed,

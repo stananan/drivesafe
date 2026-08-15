@@ -19,6 +19,8 @@ type DriveRow = {
   top_speed: number;
   avg_speed: number;
   safety_score: number;
+  audio_monitoring: boolean;
+  current_speed: number;
   profiles?: { username: string } | null;
 };
 
@@ -40,7 +42,7 @@ type EventRow = {
 };
 
 const DRIVE_COLUMNS =
-  'id, driver_id, started_at, ended_at, distance_meters, top_speed, avg_speed, safety_score, profiles!drives_driver_id_fkey(username)';
+  'id, driver_id, started_at, ended_at, distance_meters, top_speed, avg_speed, safety_score, audio_monitoring, current_speed, profiles!drives_driver_id_fkey(username)';
 
 function toDrive(row: DriveRow, events: DriveEvent[] = [], route: DrivePoint[] = []): Drive {
   return {
@@ -54,6 +56,8 @@ function toDrive(row: DriveRow, events: DriveEvent[] = [], route: DrivePoint[] =
     topSpeed: row.top_speed,
     avgSpeed: row.avg_speed,
     safetyScore: row.safety_score,
+    audioMonitoring: row.audio_monitoring,
+    currentSpeed: row.current_speed,
     events,
     route,
   };
@@ -147,6 +151,73 @@ export async function getDrive(id: string): Promise<Drive | null> {
   return toDrive(row as unknown as DriveRow, events, route);
 }
 
+export type LiveDrive = {
+  drive: Drive;
+  /** The driver's most recent published position, when they are sharing. */
+  position: { lat: number; lon: number; at: number } | null;
+};
+
+/**
+ * A drive in progress, for the parent's live dashboard.
+ *
+ * Deliberately does not pull `drive_points`: the trace is only uploaded when the
+ * drive ends, so mid-drive there is nothing there to draw. The live map follows
+ * the driver's published position instead, which is a single row that updates
+ * every few seconds rather than a polyline that grows all trip.
+ */
+export async function getLiveDrive(driveId: string): Promise<LiveDrive | null> {
+  const supabase = requireSupabase();
+
+  const { data, error } = await supabase
+    .from('drives')
+    .select(DRIVE_COLUMNS)
+    .eq('id', driveId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+
+  const row = data as unknown as DriveRow;
+
+  const [{ data: eventRows }, { data: profileRow }] = await Promise.all([
+    supabase
+      .from('drive_events')
+      .select('id, type, occurred_at, detail, lat, lon')
+      .eq('drive_id', driveId)
+      .order('occurred_at', { ascending: false }),
+    supabase
+      .from('profiles')
+      .select('last_lat, last_lon, last_location_at, location_sharing')
+      .eq('id', row.driver_id)
+      .maybeSingle<{
+        last_lat: number | null;
+        last_lon: number | null;
+        last_location_at: string | null;
+        location_sharing: boolean;
+      }>(),
+  ]);
+
+  const events = ((eventRows ?? []) as EventRow[]).map(toEvent);
+
+  const hasPosition =
+    profileRow?.location_sharing &&
+    profileRow.last_lat !== null &&
+    profileRow.last_lon !== null;
+
+  return {
+    drive: toDrive(row, events),
+    position: hasPosition
+      ? {
+          lat: profileRow.last_lat!,
+          lon: profileRow.last_lon!,
+          at: profileRow.last_location_at
+            ? new Date(profileRow.last_location_at).getTime()
+            : Date.now(),
+        }
+      : null,
+  };
+}
+
 /**
  * The children in the caller's family, as the parent's Live tab sees them:
  * where they are, whether they are driving right now, and how they have been
@@ -175,7 +246,7 @@ export async function listFamilyDrivers(familyId: string): Promise<LinkedDriver[
 
   const { data: driveRows } = await supabase
     .from('drives')
-    .select('id, driver_id, started_at, ended_at, safety_score')
+    .select('id, driver_id, started_at, ended_at, safety_score, audio_monitoring')
     .in(
       'driver_id',
       children.map((child) => child.id)
@@ -188,6 +259,7 @@ export async function listFamilyDrivers(familyId: string): Promise<LinkedDriver[
     started_at: string;
     ended_at: string | null;
     safety_score: number;
+    audio_monitoring: boolean;
   }[];
 
   return children.map((child) => {
@@ -218,6 +290,7 @@ export async function listFamilyDrivers(familyId: string): Promise<LinkedDriver[
       id: child.id,
       name: child.username,
       activeDriveId: active?.id ?? null,
+      activeAudioMonitoring: active ? active.audio_monitoring : null,
       lastSeenAt: lastFixAt ?? lastDriveAt,
       lastLocation: isSharing ? { lat: child.last_lat!, lon: child.last_lon! } : null,
       weekScore,
@@ -225,9 +298,104 @@ export async function listFamilyDrivers(familyId: string): Promise<LinkedDriver[
   });
 }
 
-export type SavedDriveInput = {
+/**
+ * Opens a drive the moment recording begins.
+ *
+ * The row exists with `ended_at` null for the whole trip, which is what makes a
+ * drive visible to a parent while it is happening. Nothing else about the drive
+ * is known yet, so the stats start at zero and get filled in by heartbeats.
+ */
+export async function startDrive(input: {
   driverId: string;
   startedAt: number;
+  audioMonitoring: boolean;
+}): Promise<string> {
+  const supabase = requireSupabase();
+
+  const { data, error } = await supabase
+    .from('drives')
+    .insert({
+      driver_id: input.driverId,
+      started_at: new Date(input.startedAt).toISOString(),
+      ended_at: null,
+      audio_monitoring: input.audioMonitoring,
+    })
+    .select('id')
+    .single<{ id: string }>();
+
+  if (error) throw new Error(error.message);
+
+  return data.id;
+}
+
+/**
+ * Pushes the in-progress numbers so the parent dashboard has something current.
+ *
+ * Called on a timer rather than on every GPS fix: a fix arrives about once a
+ * second, and a write that often would be wasteful for a screen nobody may be
+ * watching. Failures are silent by design — a missed heartbeat costs a stale
+ * number for a few seconds and must never interrupt recording.
+ */
+export async function heartbeatDrive(input: {
+  driveId: string;
+  distanceMeters: number;
+  topSpeed: number;
+  avgSpeed: number;
+  currentSpeed: number;
+}): Promise<void> {
+  const supabase = requireSupabase();
+
+  await supabase
+    .from('drives')
+    .update({
+      distance_meters: input.distanceMeters,
+      top_speed: input.topSpeed,
+      avg_speed: input.avgSpeed,
+      current_speed: input.currentSpeed,
+    })
+    .eq('id', input.driveId);
+}
+
+/** Mirrors the driver's audio toggle so the parent sees it change live. */
+export async function setDriveAudioMonitoring(
+  driveId: string,
+  enabled: boolean
+): Promise<void> {
+  const supabase = requireSupabase();
+
+  const { error } = await supabase
+    .from('drives')
+    .update({ audio_monitoring: enabled })
+    .eq('id', driveId);
+
+  if (error) throw new Error(error.message);
+}
+
+/** Records one event as it happens, rather than waiting for the drive to end. */
+export async function logDriveEvent(input: {
+  driveId: string;
+  type: DriveEvent['type'];
+  at: number;
+  detail: string;
+  lat?: number | null;
+  lon?: number | null;
+}): Promise<void> {
+  const supabase = requireSupabase();
+
+  const { error } = await supabase.from('drive_events').insert({
+    drive_id: input.driveId,
+    type: input.type,
+    occurred_at: new Date(input.at).toISOString(),
+    detail: input.detail,
+    lat: input.lat ?? null,
+    lon: input.lon ?? null,
+  });
+
+  if (error) throw new Error(error.message);
+}
+
+export type FinishedDriveInput = {
+  driveId: string;
   endedAt: number;
   distanceMeters: number;
   topSpeed: number;
@@ -236,39 +404,39 @@ export type SavedDriveInput = {
 };
 
 /**
- * Writes a finished drive and its trace.
+ * Closes out a drive: final stats, the score, the derived events, and the trace.
  *
  * The trace is inserted in chunks because a long drive can carry thousands of
  * points, and PostgREST rejects a single payload that large.
+ *
+ * Order matters. `ended_at` is written first so the drive stops showing as live
+ * even if the phone loses signal partway through uploading the trace — a drive
+ * that is stuck "in progress" forever is worse than one missing its route.
  */
-export async function saveDrive(input: SavedDriveInput): Promise<string> {
+export async function finishDrive(input: FinishedDriveInput): Promise<void> {
   const supabase = requireSupabase();
 
   // Scored on the phone from the trace we just recorded — see SCORING.md.
   const scored = scoreDrive(input.route);
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('drives')
-    .insert({
-      driver_id: input.driverId,
-      started_at: new Date(input.startedAt).toISOString(),
+    .update({
       ended_at: new Date(input.endedAt).toISOString(),
       distance_meters: input.distanceMeters,
       top_speed: input.topSpeed,
       avg_speed: input.avgSpeed,
+      current_speed: 0,
       safety_score: scored.score,
     })
-    .select('id')
-    .single<{ id: string }>();
+    .eq('id', input.driveId);
 
   if (error) throw new Error(error.message);
-
-  const driveId = data.id;
 
   if (scored.events.length > 0) {
     const { error: eventError } = await supabase.from('drive_events').insert(
       scored.events.map((event) => ({
-        drive_id: driveId,
+        drive_id: input.driveId,
         type: event.type,
         occurred_at: new Date(event.at).toISOString(),
         detail: event.detail,
@@ -278,14 +446,14 @@ export async function saveDrive(input: SavedDriveInput): Promise<string> {
     );
 
     // A missing event list is a worse outcome than a missing score, but neither
-    // should lose the drive itself — it is already saved at this point.
+    // should lose the drive itself — it is already closed out at this point.
     if (eventError) console.warn('Could not save drive events:', eventError.message);
   }
 
   const CHUNK = 500;
   for (let i = 0; i < input.route.length; i += CHUNK) {
     const chunk = input.route.slice(i, i + CHUNK).map((point) => ({
-      drive_id: driveId,
+      drive_id: input.driveId,
       recorded_at: new Date(point.t).toISOString(),
       lat: point.lat,
       lon: point.lon,
@@ -296,8 +464,6 @@ export async function saveDrive(input: SavedDriveInput): Promise<string> {
     const { error: pointError } = await supabase.from('drive_points').insert(chunk);
     if (pointError) throw new Error(pointError.message);
   }
-
-  return driveId;
 }
 
 /** Rolling safety average across completed drives, 0–100. */
