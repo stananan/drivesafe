@@ -87,6 +87,50 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
   read receipts at all yet.
 - [ ] Audio monitoring stops if the driver backgrounds the app, same as GPS.
 
+## Supabase free tier: where the ceilings are
+
+Figures below are as of August 2026 — check the current plan page before relying
+on them. Free tier: 500 MB database, 1 GB file storage, 5 GB egress/month,
+2M realtime messages/month.
+
+**Today's usage is nowhere near any limit.** A 30-minute drive writes about
+0.8 MB across `drive_audio_levels` and `drive_points` — roughly 650 such drives
+before the database is full, or about 280 MB a year for one teen driving daily.
+A fully-watched 30-minute drive costs ~3,600 realtime messages, so the 2M
+monthly allowance covers around 550 of them.
+
+- [!] **The project pauses after 7 days of inactivity.** This is the free-tier
+  limit most likely to actually bite, and it has nothing to do with volume: if
+  nobody touches the project for a week, it suspends and every app install
+  breaks until someone restores it from the dashboard. For a Congressional App
+  Challenge entry that judges may open weeks after submission, that is a live
+  hazard. Either keep it warm deliberately or budget for the paid tier around
+  judging.
+- [ ] **Prune old drive data.** Nothing deletes anything today. A retention
+  sweep — drop `drive_points` and `drive_audio_levels` older than, say, 90 days
+  while keeping the drive summary and its events — keeps the database flat
+  instead of monotonically growing.
+
+**Dashcam is the one that does not fit.** Video is three orders of magnitude
+heavier than anything currently stored:
+
+| Bitrate | Per 60s clip | Clips to fill 1 GB | Continuous 30-min drive |
+| --- | --- | --- | --- |
+| 0.8 Mbps (low 720p) | 5.7 MB | ~179 | 172 MB → 6 drives fill the tier |
+| 2 Mbps (decent 720p) | 14.3 MB | ~72 | 429 MB → 2.4 drives fill the tier |
+| 4 Mbps (1080p) | 28.6 MB | ~36 | 858 MB → 1.2 drives fill the tier |
+
+- [ ] **Do not upload continuously.** Two 30-minute drives at ordinary quality
+  exhaust the entire free storage tier. The rolling-buffer design already in
+  `ROADMAP.md` is the right one for reasons beyond product taste.
+- [ ] **Keep clips on the phone; upload only what is saved.** An event-triggered
+  60-second clip at 720p is ~6-14 MB, which is affordable. Everything else stays
+  local and is overwritten.
+- [ ] **Add clip retention from day one**, not later. Even at one saved clip a
+  day, the free tier fills in two to six months with no pruning.
+- [ ] **Egress matters too.** 5 GB/month is roughly 350-900 clip views. Fine for
+  a family; not fine if a demo video autoplays clips to every visitor.
+
 ## Nice to have
 
 - [ ] Rolling-buffer dashcam and the `"DriveSafe, save that"` voice trigger —

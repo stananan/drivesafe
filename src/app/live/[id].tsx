@@ -26,6 +26,18 @@ import type { DriveEvent } from '@/types/drive';
  */
 const REFRESH_MS = 5_000;
 
+/**
+ * The live card shows a moving window, not the whole drive.
+ *
+ * Plotting everything since the start looks stationary once a drive is long:
+ * twenty minutes of readings squeezed into sixty bars means each new one shifts
+ * a single bar by a fraction, and the graph reads as frozen. A window keeps each
+ * arrival worth a whole bar, which is what makes the driver's own chart feel
+ * alive. The whole drive is still there to look at afterwards, as a line, on the
+ * drive detail screen.
+ */
+const LIVE_WINDOW_SAMPLES = 60;
+
 /** How long a loud-audio alert stays banner-worthy rather than just list-worthy. */
 const RECENT_ALERT_MS = 3 * 60_000;
 
@@ -136,9 +148,8 @@ export default function LiveDriveScreen() {
 
   // The live series wins once it has anything; the drive query seeds the first
   // paint and remains the only source once the drive has ended.
-  const levels = (liveLevels.length > 0 ? liveLevels : drive.audioLevels).map(
-    (sample) => sample.level
-  );
+  const series = liveLevels.length > 0 ? liveLevels : drive.audioLevels;
+  const levels = series.slice(-LIVE_WINDOW_SAMPLES).map((sample) => sample.level);
 
   // Events come back newest first, so the first match is the latest one.
   const recentLoud = isActive
@@ -225,14 +236,15 @@ export default function LiveDriveScreen() {
       </Card>
 
       {drive.audioMonitoring ? (
-        <Card title="How loud it is in there" meta={`${levels.length} readings`}>
+        <Card title="How loud it is in there" meta={`${series.length} readings`}>
           <AudioLevelGraph
             levels={levels}
             emptyMessage="Waiting for the first readings from their phone."
           />
           <ThemedText type="small" themeColor="textSecondary">
-            The whole drive so far, not just since you opened this. Taller bars mean a louder car;
-            the line is where DriveSafe starts warning them.
+            The last half-minute, updating as it happens. Taller bars mean a louder car; the line is
+            where DriveSafe starts warning them. The whole drive is on the drive itself once it
+            ends.
           </ThemedText>
         </Card>
       ) : null}
