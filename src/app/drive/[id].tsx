@@ -65,11 +65,15 @@ export default function DriveDetailScreen() {
       </Card>
 
       {drive.audioLevels.length > 0 ? (
-        <Card title="Cabin noise" meta={`${drive.audioLevels.length} readings`}>
-          <AudioLevelGraph levels={drive.audioLevels.map((sample) => sample.level)} height={120} />
+        <Card title="Cabin noise">
+          <AudioLevelGraph
+            levels={drive.audioLevels.map((sample) => sample.level)}
+            variant="line"
+            height={120}
+          />
           <ThemedText type="small" themeColor="textSecondary">
-            How loud it was across the whole drive. The line is where DriveSafe warns the driver;
-            bars reaching it are what cost points.
+            How loud it was across the whole drive. The dashed line is where DriveSafe warns the
+            driver; peaks reaching it are what cost points.
           </ThemedText>
         </Card>
       ) : null}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
+import { AudioLevelGraph } from '@/components/audio-level-graph';
 import { RoutePreview } from '@/components/route-preview';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,13 @@ import { useDriveTracker } from '@/lib/use-drive-tracker';
  * for a dashboard that may well have nobody looking at it.
  */
 const HEARTBEAT_MS = 10_000;
+
+/**
+ * Loudness goes up far more often than the heartbeat. It is a handful of small
+ * rows, and it is the one thing on the parent's screen that visibly lags when
+ * it waits — a noise graph that updates every ten seconds reads as broken.
+ */
+const AUDIO_FLUSH_MS = 2_000;
 
 /** The on-screen loud-noise warning clears itself rather than needing a tap. */
 const ALERT_VISIBLE_MS = 12_000;
@@ -144,13 +152,6 @@ export default function DriveScreen() {
         });
       }
 
-      // Hand off whatever the monitor has buffered since the last beat, so a
-      // parent opening the drive late still sees the part they missed.
-      if (pendingLevels.current.length > 0) {
-        const batch = pendingLevels.current;
-        pendingLevels.current = [];
-        await appendAudioLevels(driveId!, batch);
-      }
     }
 
     // Once immediately, so the parent sees the drive appear rather than waiting
@@ -160,6 +161,33 @@ export default function DriveScreen() {
 
     return () => clearInterval(timer);
   }, [isRecording, driveId, profile]);
+
+  // Loudness on its own, faster cadence. Buffered so this is one small insert
+  // rather than a write per reading.
+  useEffect(() => {
+    if (!isRecording || !driveId || !audioEnabled) return;
+
+    async function flush() {
+      if (pendingLevels.current.length === 0) return;
+
+      const batch = pendingLevels.current;
+      pendingLevels.current = [];
+
+      try {
+        await appendAudioLevels(driveId!, batch);
+      } catch {
+        // A dropped batch costs a gap in a graph. Never worth interrupting a
+        // drive, and the next flush carries on regardless.
+      }
+    }
+
+    const timer = setInterval(() => void flush(), AUDIO_FLUSH_MS);
+
+    return () => {
+      clearInterval(timer);
+      void flush();
+    };
+  }, [isRecording, driveId, audioEnabled]);
 
   async function handleStart() {
     if (!profile) return;
@@ -289,6 +317,15 @@ export default function DriveScreen() {
           />
         )}
       </Card>
+
+      {audio.status === 'monitoring' ? (
+        <Card title="Cabin noise">
+          <AudioLevelGraph levels={audio.levels} height={80} />
+          <ThemedText type="small" themeColor="textSecondary">
+            The last few seconds. Bars reaching the line are what DriveSafe warns you about.
+          </ThemedText>
+        </Card>
+      ) : null}
 
       {audio.status === 'denied' ? (
         <Card title="Microphone access needed">

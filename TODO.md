@@ -77,9 +77,11 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
   3,600 rows to `drive_audio_levels`. The graph downsamples to 60 bars anyway, so
   bucketing on the phone before upload — a peak every five seconds, say — would
   cut this by 5× with no visible difference.
-- [ ] **The parent's live graph refreshes on the 5 s poll,** so it lags the car
-  by up to five seconds. Fine for a noise graph; worth knowing before anyone
-  reads it as instantaneous.
+- [ ] **The parent's noise graph lags the car by roughly 2–4 seconds** — the
+  driver flushes readings every 2 s and the parent polls every 2 s. Closing that
+  further means realtime on `drive_audio_levels` (add it to the
+  `supabase_realtime` publication and subscribe), which trades a schema change
+  for about two seconds.
 - [ ] **Push tokens are never cleaned up.** A parent who reinstalls leaves a dead
   token behind. Expo's push receipts report `DeviceNotRegistered`; we do not
   read receipts at all yet.

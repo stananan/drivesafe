@@ -12,7 +12,7 @@ import { Screen } from '@/components/ui/screen';
 import { Stat, StatRow } from '@/components/ui/stat';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { getLiveDrive } from '@/lib/drives';
+import { getLiveDrive, listAudioLevels } from '@/lib/drives';
 import { formatDuration, formatMiles, formatMph, formatRelative } from '@/lib/format';
 import { getSupabase } from '@/lib/supabase';
 import { useAsync } from '@/lib/use-async';
@@ -24,6 +24,13 @@ import type { DriveEvent } from '@/types/drive';
  * position lives on `profiles`, which the drive subscription does not watch.
  */
 const REFRESH_MS = 5_000;
+
+/**
+ * Loudness gets its own, faster poll. It is a single narrow query, and it is the
+ * one number on this screen that changes second to second — putting it on the
+ * general refresh made the graph feel broken rather than merely delayed.
+ */
+const AUDIO_REFRESH_MS = 2_000;
 
 /** How long a loud-audio alert stays banner-worthy rather than just list-worthy. */
 const RECENT_ALERT_MS = 3 * 60_000;
@@ -93,6 +100,32 @@ export default function LiveDriveScreen() {
   const position = live.data?.position ?? null;
   const isActive = drive?.status === 'active';
 
+  // Loudness on its own clock. Seeded by the drive query, then kept current by
+  // this so the graph tracks the car rather than the five-second refresh.
+  const [liveLevels, setLiveLevels] = useState<number[]>([]);
+  useEffect(() => {
+    if (!id || !isActive) return;
+
+    let cancelled = false;
+
+    async function pull() {
+      try {
+        const rows = await listAudioLevels(id);
+        if (!cancelled) setLiveLevels(rows.map((row) => row.level));
+      } catch {
+        // Keep whatever is already drawn; the next tick tries again.
+      }
+    }
+
+    void pull();
+    const timer = setInterval(() => void pull(), AUDIO_REFRESH_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [id, isActive]);
+
   // A finished drive is not a live drive. The moment the driver ends it, hand
   // the parent the completed trip instead of leaving them on a dashboard whose
   // numbers have stopped moving. `replace` rather than `push` so Back returns
@@ -128,6 +161,10 @@ export default function LiveDriveScreen() {
   }
 
   const duration = (drive.endedAt ?? now) - drive.startedAt;
+
+  // The fast poll wins once it has anything; the drive query seeds the first paint.
+  const levels =
+    liveLevels.length > 0 ? liveLevels : drive.audioLevels.map((sample) => sample.level);
 
   // Events come back newest first, so the first match is the latest one.
   const recentLoud = isActive
@@ -214,12 +251,14 @@ export default function LiveDriveScreen() {
       </Card>
 
       {drive.audioMonitoring ? (
-        <Card title="How loud it is in there" meta={`${drive.audioLevels.length} readings`}>
-          <AudioLevelGraph levels={drive.audioLevels.map((sample) => sample.level)} />
+        <Card title="How loud it is in there" meta={`${levels.length} readings`}>
+          <AudioLevelGraph
+            levels={levels}
+            emptyMessage="Waiting for the first readings from their phone."
+          />
           <ThemedText type="small" themeColor="textSecondary">
-            {drive.audioLevels.length === 0
-              ? 'Waiting for the first readings from their phone.'
-              : 'The whole drive so far, not just since you opened this. Taller bars mean a louder car; the line is where DriveSafe starts warning them.'}
+            The whole drive so far, not just since you opened this. Taller bars mean a louder car;
+            the line is where DriveSafe starts warning them.
           </ThemedText>
         </Card>
       ) : null}
