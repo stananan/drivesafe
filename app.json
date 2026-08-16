@@ -38,7 +38,9 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "DriveSafe uses your location to record your drive route and speed so your safety scores stay accurate."
+          "locationWhenInUsePermission": "DriveSafe uses your location to record your drive route and speed so your safety scores stay accurate.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false
         }
       ],
       [

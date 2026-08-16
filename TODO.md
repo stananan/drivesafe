@@ -138,9 +138,12 @@ Built: a rolling recorder that keeps the trailing minute in fifteen-second
 segments, manual "Save that", automatic saving on a loud-audio flag, upload to a
 private Supabase bucket, and playback on the drive detail screen.
 
-- [!] **Needs a development build.** `expo-camera` video recording does not work
-  in Expo Go. `npx expo run:ios` or `eas build --profile development`. Nothing
-  about the dashcam can be tested from a QR code.
+- [!] **Needs a development build, on a physical phone.** `expo-camera` video
+  recording does not work in Expo Go, and the iOS Simulator has no camera at
+  all — a simulator build will run the app but the dashcam card will never
+  produce a frame. `eas.json` is configured; either
+  `eas build --profile development --platform ios` (cloud, needs `eas login`)
+  or `npx expo run:ios --device` (local, needs CocoaPods installed).
 - [ ] **There is a gap of a few hundred milliseconds between segments** while
   the camera stops and restarts. Closing it needs native code; a saved clip has
   a small stutter at each seam.
