@@ -138,12 +138,20 @@ Built: a rolling recorder that keeps the trailing minute in fifteen-second
 segments, manual "Save that", automatic saving on a loud-audio flag, upload to a
 private Supabase bucket, and playback on the drive detail screen.
 
-- [!] **Needs a development build, on a physical phone.** `expo-camera` video
-  recording does not work in Expo Go, and the iOS Simulator has no camera at
-  all — a simulator build will run the app but the dashcam card will never
-  produce a frame. `eas.json` is configured; either
-  `eas build --profile development --platform ios` (cloud, needs `eas login`)
-  or `npx expo run:ios --device` (local, needs CocoaPods installed).
+- [ ] **Try Expo Go first.** Every module this app uses — including
+  `expo-camera` and `expo-video` — is in the SDK 54 bundle at the exact version
+  installed, so Expo Go has all of it natively and the app loads normally. The
+  older note in `ROADMAP.md` saying the dashcam needs a development build is
+  unverified against this SDK. Scan the QR code, start a drive with the dashcam
+  on, and read the dashcam card: it surfaces any recording error directly.
+  Fall back to a development build only if that card reports one.
+- [!] **Push notifications genuinely do not work in Expo Go.** That capability
+  was removed in SDK 53 and no amount of configuration brings it back. This one
+  really does need `eas build --profile development` — `eas.json` is configured
+  for it.
+- [ ] **The iOS Simulator has no camera.** If a development build does become
+  necessary, it has to go on a physical phone; a simulator build runs everything
+  except the feature being tested.
 - [ ] **There is a gap of a few hundred milliseconds between segments** while
   the camera stops and restarts. Closing it needs native code; a saved clip has
   a small stutter at each seam.
