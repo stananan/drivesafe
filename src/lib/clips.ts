@@ -62,6 +62,9 @@ export async function saveClip(input: {
 
   if (error) throw new Error(error.message);
 
+  let uploaded = 0;
+  let firstFailure: string | null = null;
+
   for (const [index, part] of input.parts.entries()) {
     const path = `drives/${input.driveId}/${clip.id}/${index}.mp4`;
 
@@ -86,14 +89,24 @@ export async function saveClip(input: {
       });
 
       if (partError) throw new Error(partError.message);
+
+      uploaded += 1;
     } catch (caught) {
       // One bad segment should not lose the rest of the clip. A clip with a gap
       // is still worth having; a failed upload that discards everything is not.
-      console.warn(
-        `Could not upload clip part ${index}:`,
-        caught instanceof Error ? caught.message : caught
-      );
+      const message = caught instanceof Error ? caught.message : String(caught);
+      firstFailure ??= message;
+      console.warn(`Could not upload clip part ${index}:`, message);
     }
+  }
+
+  // Nothing uploaded means the bucket is unreachable or its policies reject
+  // this driver. Leaving the row behind would put an unplayable clip in the
+  // list and make a broken bucket look like a broken player, so it goes, and
+  // the driver hears about it.
+  if (uploaded === 0) {
+    await supabase.from('drive_clips').delete().eq('id', clip.id);
+    throw new Error(firstFailure ?? 'No part of the clip could be uploaded.');
   }
 
   return clip.id;
@@ -197,29 +210,44 @@ export async function listRecentClips(limit = 60): Promise<FamilyClip[]> {
 
   const { data, error } = await supabase
     .from('drive_clips')
-    .select(
-      'id, drive_id, reason, recorded_at, duration_seconds, has_audio, drives!inner(started_at, profiles!drives_driver_id_fkey(username))'
-    )
+    .select('id, drive_id, reason, recorded_at, duration_seconds, has_audio')
     .order('recorded_at', { ascending: false })
     .limit(limit);
 
   if (error) throw new Error(error.message);
 
-  const rows = (data ?? []) as unknown as (ClipRow & {
-    drive_id: string;
-    drives: { started_at: string; profiles: { username: string } | null } | null;
-  })[];
+  const rows = (data ?? []) as (ClipRow & { drive_id: string })[];
+  if (rows.length === 0) return [];
+
+  // The drive and its driver come from a second query rather than a nested
+  // embed. A relationship hint one level down is easy to get subtly wrong and
+  // fails as an opaque PostgREST error; two plain lookups either work or say
+  // exactly which one did not.
+  const { data: driveRows } = await supabase
+    .from('drives')
+    .select('id, started_at, profiles!drives_driver_id_fkey(username)')
+    .in('id', [...new Set(rows.map((row) => row.drive_id))]);
+
+  const drives = new Map(
+    ((driveRows ?? []) as unknown as {
+      id: string;
+      started_at: string;
+      profiles: { username: string } | null;
+    }[]).map((drive) => [drive.id, drive])
+  );
 
   const withMedia = await withParts(rows);
 
-  return withMedia.map((clip, index) => ({
-    ...clip,
-    driveId: rows[index].drive_id,
-    driverName: rows[index].drives?.profiles?.username ?? 'Driver',
-    driveStartedAt: rows[index].drives
-      ? new Date(rows[index].drives!.started_at).getTime()
-      : clip.recordedAt,
-  }));
+  return withMedia.map((clip, index) => {
+    const drive = drives.get(rows[index].drive_id);
+
+    return {
+      ...clip,
+      driveId: rows[index].drive_id,
+      driverName: drive?.profiles?.username ?? 'Driver',
+      driveStartedAt: drive ? new Date(drive.started_at).getTime() : clip.recordedAt,
+    };
+  });
 }
 
 /**
