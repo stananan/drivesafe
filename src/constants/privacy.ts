@@ -53,7 +53,7 @@ export const PrivacyPolicySections: PrivacySection[] = [
     title: 'Dashcam',
     paragraphs: [
       'This feature is off by default and only a driver can turn it on, from their profile.',
-      'While it is on and a drive is recording, the camera records continuously in short segments and keeps only the last minute. Everything older is deleted on the phone and is never sent anywhere. Footage leaves the phone only when a clip is deliberately kept — either because the driver tapped Save that, or because DriveSafe flagged the car as loud.',
+      'While it is on and a drive is recording, the camera records continuously in short segments and keeps only the last fifteen seconds. Everything older is deleted on the phone and is never sent anywhere. Footage leaves the phone only when a clip is deliberately kept — either because the driver tapped Save that, or because DriveSafe flagged the car as loud.',
       'Saved clips are video only. They have no sound, because the microphone is used to measure loudness and nothing else. Clips are stored privately and are visible to your family, nobody else. Deleting the drive or your account deletes them.',
     ],
   },

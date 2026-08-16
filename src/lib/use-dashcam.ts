@@ -23,16 +23,25 @@ import { CameraView } from 'expo-camera';
 import { File } from 'expo-file-system';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/**
- * Segment length. Short segments mean less footage lost to the gap between
- * them and a tighter window around the moment worth keeping; long segments mean
- * fewer files and less restart overhead. Fifteen seconds keeps a saved clip
- * within a few seconds of what someone actually meant to capture.
- */
-const SEGMENT_SECONDS = 15;
+/** How far back a saved clip reaches. */
+export const CLIP_SECONDS = 15;
 
-/** Four segments, so a saved clip reaches about a minute back. */
-const RING_SIZE = 4;
+/**
+ * Segment length, and the granularity of everything above.
+ *
+ * A clip can only start on a segment boundary, so short segments mean a saved
+ * clip lands closer to the fifteen seconds actually asked for. They also mean
+ * more seams: the player has to hand off between parts, and every handoff is a
+ * visible stutter. Five seconds is the compromise — a clip overshoots by at
+ * most a few seconds, and carries three or four seams rather than a dozen.
+ */
+const SEGMENT_SECONDS = 5;
+
+/**
+ * Enough segments to cover the window with one spare, since the segment being
+ * recorded right now is not yet a file and cannot be counted on.
+ */
+const RING_SIZE = Math.ceil(CLIP_SECONDS / SEGMENT_SECONDS) + 1;
 
 export type DashcamStatus = 'idle' | 'starting' | 'recording' | 'error';
 
@@ -47,8 +56,8 @@ export type Dashcam = {
   status: DashcamStatus;
   /** Attach to the `<CameraView>` this hook drives. */
   cameraRef: React.RefObject<CameraView | null>;
-  /** Segments currently buffered, oldest first. */
-  buffered: number;
+  /** Seconds of footage currently held, capped by the ring. */
+  bufferedSeconds: number;
   errorMessage: string | null;
   /**
    * Ends the segment in progress and returns the whole trailing window, so a
@@ -74,7 +83,7 @@ export function useDashcam({ enabled }: { enabled: boolean }): Dashcam {
   const cameraRef = useRef<CameraView | null>(null);
 
   const [status, setStatus] = useState<DashcamStatus>('idle');
-  const [buffered, setBuffered] = useState(0);
+  const [bufferedSeconds, setBufferedSeconds] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const ring = useRef<DashcamSegment[]>([]);
@@ -91,7 +100,9 @@ export function useDashcam({ enabled }: { enabled: boolean }): Dashcam {
       if (oldest && !retained.current.has(oldest.uri)) discard(oldest.uri);
     }
 
-    setBuffered(ring.current.length);
+    setBufferedSeconds(
+      Math.round(ring.current.reduce((total, segment) => total + segment.durationSeconds, 0))
+    );
   }, []);
 
   const release = useCallback(
@@ -128,10 +139,20 @@ export function useDashcam({ enabled }: { enabled: boolean }): Dashcam {
       });
     }
 
-    const segments = [...ring.current];
-    for (const segment of segments) retained.current.add(segment.uri);
+    // Walk back from the newest segment until the window is covered, so a clip
+    // is the last fifteen seconds rather than everything still on disk.
+    const trailing: DashcamSegment[] = [];
+    let covered = 0;
 
-    return segments;
+    for (let i = ring.current.length - 1; i >= 0 && covered < CLIP_SECONDS; i--) {
+      const segment = ring.current[i];
+      trailing.unshift(segment);
+      covered += segment.durationSeconds;
+    }
+
+    for (const segment of trailing) retained.current.add(segment.uri);
+
+    return trailing;
   }, [status]);
 
   useEffect(() => {
@@ -216,9 +237,9 @@ export function useDashcam({ enabled }: { enabled: boolean }): Dashcam {
       }
 
       ring.current = [];
-      setBuffered(0);
+      setBufferedSeconds(0);
     };
   }, [enabled, prune]);
 
-  return { status, cameraRef, buffered, errorMessage, flush, release };
+  return { status, cameraRef, bufferedSeconds, errorMessage, flush, release };
 }

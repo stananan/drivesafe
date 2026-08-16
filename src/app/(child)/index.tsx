@@ -390,7 +390,7 @@ export default function DriveScreen() {
       {isRecording && dashcamEnabled ? (
         <Card
           title="Dashcam"
-          meta={dashcam.status === 'recording' ? `${dashcam.buffered * 15}s buffered` : ''}>
+          meta={dashcam.status === 'recording' ? `${dashcam.bufferedSeconds}s buffered` : ''}>
           {hasCamera ? (
             <>
               <View style={styles.cameraWrap}>
@@ -406,8 +406,8 @@ export default function DriveScreen() {
               </View>
 
               <ThemedText type="small" themeColor="textSecondary">
-                Recording on a loop and keeping only the last minute. Video only — no sound is
-                captured. Tap below to keep what just happened.
+                Recording on a loop and keeping only the last fifteen seconds. Video only — no
+                sound is captured. Tap below to keep what just happened.
               </ThemedText>
 
               <Button
@@ -515,8 +515,7 @@ export default function DriveScreen() {
       {!isRecording ? (
         <Card title="Coming soon">
           <View style={styles.upcoming}>
-            <UpcomingRow label="Rolling-buffer dashcam" detail="Keeps the last 60 seconds" />
-            <UpcomingRow label='"DriveSafe, save that"' detail="Voice-triggered clip capture" />
+                        <UpcomingRow label='"DriveSafe, save that"' detail="Voice-triggered clip capture" />
           </View>
         </Card>
       ) : null}
