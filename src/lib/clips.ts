@@ -15,7 +15,7 @@
 import { File } from 'expo-file-system';
 
 import { requireSupabase } from '@/lib/supabase';
-import type { DriveClip, DriveClipReason } from '@/types/drive';
+import type { DriveClip, DriveClipReason, FamilyClip } from '@/types/drive';
 
 const BUCKET = 'drive-clips';
 
@@ -39,6 +39,7 @@ export async function saveClip(input: {
   driveId: string;
   reason: DriveClipReason;
   recordedAt: number;
+  hasAudio: boolean;
   parts: PendingClipPart[];
 }): Promise<string | null> {
   if (input.parts.length === 0) return null;
@@ -54,6 +55,7 @@ export async function saveClip(input: {
       reason: input.reason,
       recorded_at: new Date(input.recordedAt).toISOString(),
       duration_seconds: duration,
+      has_audio: input.hasAudio,
     })
     .select('id')
     .single<{ id: string }>();
@@ -102,6 +104,7 @@ type ClipRow = {
   reason: DriveClipReason;
   recorded_at: string;
   duration_seconds: number;
+  has_audio: boolean;
 };
 
 type PartRow = {
@@ -113,25 +116,15 @@ type PartRow = {
 };
 
 /**
- * Clips for a drive, newest first, with playable URLs.
+ * Attaches parts and playable URLs to a set of clip rows.
  *
- * Signing happens in one batch rather than per part, because a drive with a
- * handful of clips would otherwise be a dozen round trips before anything could
- * play.
+ * Signing happens in one batch rather than per part, because a handful of clips
+ * would otherwise be a dozen round trips before anything could play.
  */
-export async function listClips(driveId: string): Promise<DriveClip[]> {
-  const supabase = requireSupabase();
-
-  const { data: clipRows, error } = await supabase
-    .from('drive_clips')
-    .select('id, reason, recorded_at, duration_seconds')
-    .eq('drive_id', driveId)
-    .order('recorded_at', { ascending: false });
-
-  if (error) throw new Error(error.message);
-
-  const clips = (clipRows ?? []) as ClipRow[];
+async function withParts(clips: ClipRow[]): Promise<DriveClip[]> {
   if (clips.length === 0) return [];
+
+  const supabase = requireSupabase();
 
   const { data: partRows } = await supabase
     .from('drive_clip_parts')
@@ -164,6 +157,7 @@ export async function listClips(driveId: string): Promise<DriveClip[]> {
     reason: clip.reason,
     recordedAt: new Date(clip.recorded_at).getTime(),
     durationSeconds: clip.duration_seconds,
+    hasAudio: clip.has_audio,
     parts: parts
       .filter((part) => part.clip_id === clip.id)
       .map((part) => ({
@@ -174,6 +168,57 @@ export async function listClips(driveId: string): Promise<DriveClip[]> {
         durationSeconds: part.duration_seconds,
         bytes: part.bytes,
       })),
+  }));
+}
+
+/** Clips for one drive, newest first, with playable URLs. */
+export async function listClips(driveId: string): Promise<DriveClip[]> {
+  const supabase = requireSupabase();
+
+  const { data, error } = await supabase
+    .from('drive_clips')
+    .select('id, reason, recorded_at, duration_seconds, has_audio')
+    .eq('drive_id', driveId)
+    .order('recorded_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+
+  return withParts((data ?? []) as ClipRow[]);
+}
+
+/**
+ * Every clip the caller can see, newest first, for the Clips tab.
+ *
+ * Row-level security scopes this to the family, so a driver gets their own and
+ * a parent gets everyone's without either query saying so.
+ */
+export async function listRecentClips(limit = 60): Promise<FamilyClip[]> {
+  const supabase = requireSupabase();
+
+  const { data, error } = await supabase
+    .from('drive_clips')
+    .select(
+      'id, drive_id, reason, recorded_at, duration_seconds, has_audio, drives!inner(started_at, profiles!drives_driver_id_fkey(username))'
+    )
+    .order('recorded_at', { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as unknown as (ClipRow & {
+    drive_id: string;
+    drives: { started_at: string; profiles: { username: string } | null } | null;
+  })[];
+
+  const withMedia = await withParts(rows);
+
+  return withMedia.map((clip, index) => ({
+    ...clip,
+    driveId: rows[index].drive_id,
+    driverName: rows[index].drives?.profiles?.username ?? 'Driver',
+    driveStartedAt: rows[index].drives
+      ? new Date(rows[index].drives!.started_at).getTime()
+      : clip.recordedAt,
   }));
 }
 

@@ -33,6 +33,11 @@ export default function ChildLayout() {
         <Icon sf="map.fill" androidSrc={<VectorIcon family={MaterialIcons} name="map" />} />
       </NativeTabs.Trigger>
 
+      <NativeTabs.Trigger name="clips">
+        <Label>Clips</Label>
+        <Icon sf="film.fill" androidSrc={<VectorIcon family={MaterialIcons} name="movie" />} />
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="history">
         <Label>History</Label>
         <Icon

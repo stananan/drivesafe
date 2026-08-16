@@ -107,8 +107,8 @@ export default function ChildProfileScreen() {
         </ThemedText>
 
         <ThemedText type="small" themeColor="textSecondary">
-          Video only. The microphone is used to measure loudness and nothing else, so clips have no
-          sound.
+          Clips include sound, like any other dashcam. Anyone riding with you can be heard on one
+          you keep, so bear that in mind before saving.
         </ThemedText>
       </Card>
 

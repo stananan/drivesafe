@@ -13,10 +13,12 @@
  *     camera stops and starts. Nothing can be done about that without native
  *     code, and it is far better than the alternative of holding an hour of
  *     footage to guarantee continuity.
- *   - Video is recorded muted, deliberately. The microphone belongs to the
- *     loudness monitor, two recorders fighting over it ends badly on iOS, and
- *     an app that promises never to record audio should not quietly ship a
- *     camera that does.
+ *   - Clips record sound, which puts the camera and the loudness monitor on the
+ *     microphone at the same time. Whether iOS actually allows that is an open
+ *     question that only a real phone can answer, so the caller passes
+ *     `audioEnabled` and can flip it off when a recording fails: the effect
+ *     re-runs and the loop retries muted rather than leaving a drive with no
+ *     dashcam at all.
  */
 
 import { CameraView } from 'expo-camera';
@@ -79,7 +81,18 @@ function discard(uri: string) {
   }
 }
 
-export function useDashcam({ enabled }: { enabled: boolean }): Dashcam {
+export function useDashcam({
+  enabled,
+  audioEnabled,
+}: {
+  enabled: boolean;
+  /**
+   * Whether the caller's `<CameraView>` is currently unmuted. Not used to
+   * configure anything here — `mute` is a view prop, not a recording option —
+   * but changing it restarts the loop, which is what makes the fallback work.
+   */
+  audioEnabled: boolean;
+}): Dashcam {
   const cameraRef = useRef<CameraView | null>(null);
 
   const [status, setStatus] = useState<DashcamStatus>('idle');
@@ -239,7 +252,7 @@ export function useDashcam({ enabled }: { enabled: boolean }): Dashcam {
       ring.current = [];
       setBufferedSeconds(0);
     };
-  }, [enabled, prune]);
+  }, [enabled, audioEnabled, prune]);
 
   return { status, cameraRef, bufferedSeconds, errorMessage, flush, release };
 }

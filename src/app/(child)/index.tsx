@@ -1,4 +1,4 @@
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
@@ -83,18 +83,48 @@ export default function DriveScreen() {
   const dashcamEnabled = profile?.dashcamEnabled ?? false;
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [micPermission, requestMicPermission] = useMicrophonePermissions();
   const [isSavingClip, setIsSavingClip] = useState(false);
   const [lastClipAt, setLastClipAt] = useState<number | null>(null);
 
+  // Flipped only when recording with sound actually fails, which is the one way
+  // to find out whether this phone will hand the microphone to the camera and
+  // the loudness monitor at the same time.
+  const [clipAudioFailed, setClipAudioFailed] = useState(false);
+  const clipAudio = (micPermission?.granted ?? false) && !clipAudioFailed;
+
   const hasCamera = cameraPermission?.granted ?? false;
-  const dashcam = useDashcam({ enabled: isRecording && dashcamEnabled && hasCamera });
+  const dashcam = useDashcam({
+    enabled: isRecording && dashcamEnabled && hasCamera,
+    audioEnabled: clipAudio,
+  });
 
-  // Ask once, when the driver has actually asked for the feature.
+  // Ask once, when the driver has actually asked for the feature. The
+  // microphone is asked for separately: clips have sound, and a driver may have
+  // the dashcam on with loudness alerts off.
   useEffect(() => {
-    if (!dashcamEnabled || cameraPermission?.granted || !cameraPermission?.canAskAgain) return;
+    if (!dashcamEnabled) return;
 
-    void requestCameraPermission();
-  }, [dashcamEnabled, cameraPermission, requestCameraPermission]);
+    if (!cameraPermission?.granted && cameraPermission?.canAskAgain) {
+      void requestCameraPermission();
+    }
+
+    if (!micPermission?.granted && micPermission?.canAskAgain) {
+      void requestMicPermission();
+    }
+  }, [
+    dashcamEnabled,
+    cameraPermission,
+    requestCameraPermission,
+    micPermission,
+    requestMicPermission,
+  ]);
+
+  // A failed recording while unmuted is the signal to drop to video-only rather
+  // than lose the dashcam for the rest of the drive.
+  useEffect(() => {
+    if (dashcam.status === 'error' && clipAudio) setClipAudioFailed(true);
+  }, [dashcam.status, clipAudio]);
 
   const keepClip = useCallback(
     async (reason: DriveClipReason) => {
@@ -112,6 +142,7 @@ export default function DriveScreen() {
           driveId: id,
           reason,
           recordedAt: segments[0].startedAt,
+          hasAudio: clipAudio,
           parts: segments.map((segment) => ({
             uri: segment.uri,
             durationSeconds: segment.durationSeconds,
@@ -129,7 +160,7 @@ export default function DriveScreen() {
         setIsSavingClip(false);
       }
     },
-    [dashcam]
+    [dashcam, clipAudio]
   );
 
   // Held in a ref so the loud-audio handler can reach the newest version
@@ -399,16 +430,22 @@ export default function DriveScreen() {
                   style={StyleSheet.absoluteFill}
                   facing="back"
                   mode="video"
-                  // Video only. The microphone belongs to the loudness monitor,
-                  // and DriveSafe does not record audio.
-                  mute
+                  mute={!clipAudio}
                 />
               </View>
 
               <ThemedText type="small" themeColor="textSecondary">
-                Recording on a loop and keeping only the last fifteen seconds. Video only — no
-                sound is captured. Tap below to keep what just happened.
+                {clipAudio
+                  ? 'Recording on a loop with sound, keeping only the last fifteen seconds. Tap below to keep what just happened.'
+                  : 'Recording on a loop, keeping only the last fifteen seconds. Tap below to keep what just happened.'}
               </ThemedText>
+
+              {clipAudioFailed ? (
+                <ThemedText type="small" style={{ color: theme.warning }}>
+                  This phone would not record sound while DriveSafe was listening for a loud cabin,
+                  so clips on this drive are video only.
+                </ThemedText>
+              ) : null}
 
               <Button
                 label={isSavingClip ? 'Saving clip…' : 'Save that'}
