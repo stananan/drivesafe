@@ -584,27 +584,27 @@ grant execute on function public.delete_account() to authenticated;
 -- ---------------------------------------------------------------------------
 -- Realtime
 --
--- The parent's live drive dashboard subscribes to these two tables so a loud
--- audio alert or the end of a drive lands without waiting for the next poll.
--- Realtime still applies the policies above, so a subscription only ever
--- delivers rows the subscriber could have selected anyway.
+-- The parent's live drive dashboard subscribes to these tables so a loud audio
+-- alert, a noise reading, or the end of a drive lands without waiting for the
+-- next poll. Realtime still applies the policies above, so a subscription only
+-- ever delivers rows the subscriber could have selected anyway — which is what
+-- makes this preferable to a broadcast channel for anything private.
 -- ---------------------------------------------------------------------------
 
 do $$
+declare
+  target text;
 begin
-  if not exists (
-    select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'drives'
-  ) then
-    alter publication supabase_realtime add table public.drives;
-  end if;
-
-  if not exists (
-    select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'drive_events'
-  ) then
-    alter publication supabase_realtime add table public.drive_events;
-  end if;
+  foreach target in array array['drives', 'drive_events', 'drive_audio_levels'] loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = target
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', target);
+    end if;
+  end loop;
 end $$;
 grant execute on function public.my_family_id() to authenticated;
 grant execute on function public.my_role() to authenticated;
