@@ -38,8 +38,14 @@ type SessionValue = {
   leaveFamily: () => Promise<{ error: string | null }>;
   /** Permanently deletes the account and every drive attached to it. */
   deleteAccount: () => Promise<{ error: string | null }>;
-  /** Driver-only consent switch for parent listen-in. */
-  setListenIn: (enabled: boolean) => Promise<{ error: string | null }>;
+  /**
+   * Updates one of the caller's own preferences. Column-level grants in the
+   * schema mean these are the only profile fields a client can write.
+   */
+  setPreference: (
+    key: 'audioAlertsEnabled' | 'locationSharing',
+    value: boolean
+  ) => Promise<{ error: string | null }>;
 
   /** Re-reads the profile and family, e.g. after another device changes them. */
   refresh: () => Promise<void>;
@@ -52,7 +58,8 @@ type ProfileRow = {
   username: string;
   role: Role;
   family_id: string | null;
-  listen_in_enabled: boolean;
+  audio_alerts_enabled: boolean;
+  location_sharing: boolean;
 };
 
 type FamilyRow = {
@@ -68,7 +75,8 @@ function toProfile(row: ProfileRow): Profile {
     username: row.username,
     role: row.role,
     familyId: row.family_id,
-    listenInEnabled: row.listen_in_enabled,
+    audioAlertsEnabled: row.audio_alerts_enabled,
+    locationSharing: row.location_sharing,
   };
 }
 
@@ -107,7 +115,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     const { data: profileRow, error } = await supabase
       .from('profiles')
-      .select('id, username, role, family_id, listen_in_enabled')
+      .select('id, username, role, family_id, audio_alerts_enabled, location_sharing')
       .eq('id', userId)
       .maybeSingle<ProfileRow>();
 
@@ -297,22 +305,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return { error: null };
   }, [configError]);
 
-  const setListenIn = useCallback<SessionValue['setListenIn']>(
-    async (enabled) => {
+  const setPreference = useCallback<SessionValue['setPreference']>(
+    async (key, value) => {
       const supabase = getSupabase();
       if (!supabase || !session?.user.id) return { error: configError };
 
+      const column =
+        key === 'audioAlertsEnabled' ? 'audio_alerts_enabled' : 'location_sharing';
+
       // Optimistic: the switch should move under the thumb, not after a round
       // trip. A failure below puts it back.
-      setProfile((current) => (current ? { ...current, listenInEnabled: enabled } : current));
+      setProfile((current) => (current ? { ...current, [key]: value } : current));
 
       const { error } = await supabase
         .from('profiles')
-        .update({ listen_in_enabled: enabled })
+        .update({ [column]: value })
         .eq('id', session.user.id);
 
       if (error) {
-        setProfile((current) => (current ? { ...current, listenInEnabled: !enabled } : current));
+        setProfile((current) => (current ? { ...current, [key]: !value } : current));
         return { error: friendlyAuthError(error) };
       }
 
@@ -339,7 +350,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       joinFamily,
       leaveFamily,
       deleteAccount,
-      setListenIn,
+      setPreference,
       refresh,
     }),
     [
@@ -355,7 +366,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       joinFamily,
       leaveFamily,
       deleteAccount,
-      setListenIn,
+      setPreference,
       refresh,
     ]
   );

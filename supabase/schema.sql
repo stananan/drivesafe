@@ -81,12 +81,15 @@ alter table public.profiles
   -- Expo push token, so a driver's phone can notify their parents directly.
   -- Null until the device registers, and cleared when they decline the prompt.
   add column if not exists push_token text,
-  -- Whether this driver permits a parent to listen to their car during a drive.
-  -- Off unless the driver turns it on themselves, and only ever writable by
-  -- them: consent that a parent could grant on a driver's behalf is not consent.
-  -- California is an all-party consent state, and a teenager's car usually has
-  -- passengers in it, so this switch is the whole legal basis for the feature.
-  add column if not exists listen_in_enabled boolean not null default false;
+  -- Whether this driver wants audio distraction alerts. A preference rather than
+  -- a per-drive choice, so it survives between trips and lives with the rest of
+  -- the driver's settings.
+  add column if not exists audio_alerts_enabled boolean not null default false;
+
+-- DriveSafe briefly had a "let a parent listen in" consent flag. It was dropped:
+-- the app only ever measures loudness and never captures audio, so there was
+-- nothing for a driver to consent to.
+alter table public.profiles drop column if exists listen_in_enabled;
 
 create table if not exists public.drives (
   id              uuid primary key default gen_random_uuid(),
@@ -148,6 +151,24 @@ create table if not exists public.drive_events (
 );
 
 create index if not exists drive_events_drive_idx on public.drive_events (drive_id);
+
+-- Cabin loudness over the course of a drive, sampled every few seconds while
+-- audio alerts are on.
+--
+-- Stored rather than streamed because a parent who opens a live drive ten
+-- minutes in should see the ten minutes they missed, and because a finished
+-- drive is worth looking at as a whole. Only the reading is kept — there is no
+-- audio in this table, in this database, or anywhere off the driver's phone.
+create table if not exists public.drive_audio_levels (
+  id          bigserial primary key,
+  drive_id    uuid not null references public.drives (id) on delete cascade,
+  recorded_at timestamptz not null,
+  -- dBFS. 0 is the loudest the microphone can encode; a quiet car sits near -60.
+  level       double precision not null
+);
+
+create index if not exists drive_audio_levels_drive_idx
+  on public.drive_audio_levels (drive_id, recorded_at);
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -384,6 +405,7 @@ alter table public.profiles enable row level security;
 alter table public.drives enable row level security;
 alter table public.drive_points enable row level security;
 alter table public.drive_events enable row level security;
+alter table public.drive_audio_levels enable row level security;
 
 drop policy if exists "read own family" on public.families;
 create policy "read own family"
@@ -476,6 +498,30 @@ create policy "driver inserts own events"
     )
   );
 
+drop policy if exists "read levels of visible drives" on public.drive_audio_levels;
+create policy "read levels of visible drives"
+  on public.drive_audio_levels for select
+  using (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id
+        and (
+          d.driver_id = auth.uid()
+          or (d.family_id is not null and d.family_id = public.my_family_id())
+        )
+    )
+  );
+
+drop policy if exists "driver inserts own levels" on public.drive_audio_levels;
+create policy "driver inserts own levels"
+  on public.drive_audio_levels for insert
+  with check (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id and d.driver_id = auth.uid()
+    )
+  );
+
 -- ---------------------------------------------------------------------------
 -- Keep a drive's family in step with its driver, so parents never lose sight of
 -- a drive because the row was written before the child joined the family.
@@ -506,7 +552,9 @@ create trigger drives_set_family
 
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.drives to authenticated;
-grant select, insert on public.drive_points, public.drive_events to authenticated;
+grant select, insert
+  on public.drive_points, public.drive_events, public.drive_audio_levels
+  to authenticated;
 grant select on public.families, public.profiles to authenticated;
 
 -- Column-level on purpose. A blanket UPDATE would let a child set their own
@@ -521,7 +569,7 @@ grant update (
     last_location_at,
     location_sharing,
     push_token,
-    listen_in_enabled
+    audio_alerts_enabled
   )
   on public.profiles to authenticated;
 grant usage, select on all sequences in schema public to authenticated;

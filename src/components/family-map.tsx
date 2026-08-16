@@ -1,7 +1,7 @@
 import * as Location from 'expo-location';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
 import MapView, { Marker, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -13,7 +13,6 @@ import {
   getLocationSharing,
   listFamilyLocations,
   publishLocation,
-  setLocationSharing,
   type FamilyLocation,
 } from '@/lib/locations';
 import { useSession } from '@/lib/session';
@@ -79,13 +78,18 @@ export function FamilyMap() {
     }
   }, [profile]);
 
-  useEffect(() => {
-    if (!profile) return;
+  // Sharing is a profile preference now, set from the profile screen. Re-read on
+  // focus rather than trusting the session copy, so toggling it on another tab
+  // and coming straight back here shows the truth.
+  useFocusEffect(
+    useCallback(() => {
+      if (!profile) return;
 
-    getLocationSharing(profile.id)
-      .then(setIsSharing)
-      .catch(() => setIsSharing(true));
-  }, [profile]);
+      getLocationSharing(profile.id)
+        .then(setIsSharing)
+        .catch(() => setIsSharing(true));
+    }, [profile])
+  );
 
   // Publish and refresh only while the screen is actually on top.
   useFocusEffect(
@@ -147,20 +151,6 @@ export function FamilyMap() {
     setHasFitted(true);
   }, [locations, hasFitted]);
 
-  async function toggleSharing(next: boolean) {
-    if (!profile) return;
-
-    setIsSharing(next);
-
-    try {
-      await setLocationSharing(profile.id, next);
-      if (next) await pushMyLocation();
-      await refresh();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not change sharing.');
-    }
-  }
-
   function focusOn(entry: FamilyLocation) {
     mapRef.current?.animateToRegion(
       {
@@ -216,16 +206,12 @@ export function FamilyMap() {
             {isLoading ? <ActivityIndicator color={theme.tint} /> : null}
           </View>
 
-          <View style={styles.headerRow}>
+          {!isSharing ? (
             <ThemedText type="small" themeColor="textSecondary">
-              Share my location
+              You are not sharing your location, so your family cannot see you here. Turn it back on
+              from your profile.
             </ThemedText>
-            <Switch
-              value={isSharing}
-              onValueChange={(next) => void toggleSharing(next)}
-              trackColor={{ true: theme.tint, false: theme.border }}
-            />
-          </View>
+          ) : null}
 
           {denied ? (
             <ThemedText type="small" style={{ color: theme.warning }}>

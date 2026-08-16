@@ -56,17 +56,12 @@ const COOLDOWN_MS = 60_000;
 
 const SAMPLE_INTERVAL_MS = 400;
 
-/** Roughly the last 25 seconds, which is enough to see a pattern forming. */
-const HISTORY_SAMPLES = 60;
-
 export type AudioMonitorStatus = 'idle' | 'requesting' | 'denied' | 'monitoring' | 'error';
 
 export type AudioMonitor = {
   status: AudioMonitorStatus;
   /** Most recent level in dBFS. Null before the first sample arrives. */
   level: number | null;
-  /** Recent levels, oldest first, for the live graph. Capped at HISTORY_SAMPLES. */
-  levels: number[];
   errorMessage: string | null;
 };
 
@@ -82,7 +77,6 @@ export function useAudioMonitor({
 
   const [status, setStatus] = useState<AudioMonitorStatus>('idle');
   const [level, setLevel] = useState<number | null>(null);
-  const [levels, setLevels] = useState<number[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Held in a ref so a new callback identity on every render does not tear the
@@ -124,7 +118,6 @@ export function useAudioMonitor({
     if (!enabled) {
       setStatus('idle');
       setLevel(null);
-      setLevels([]);
       return;
     }
 
@@ -166,11 +159,6 @@ export function useAudioMonitor({
           if (typeof metering !== 'number') return;
 
           setLevel(metering);
-          setLevels((history) =>
-            history.length < HISTORY_SAMPLES
-              ? [...history, metering]
-              : [...history.slice(history.length - HISTORY_SAMPLES + 1), metering]
-          );
 
           const now = Date.now();
 
@@ -205,7 +193,7 @@ export function useAudioMonitor({
     };
   }, [enabled, recorder, teardown]);
 
-  return { status, level, levels, errorMessage };
+  return { status, level, errorMessage };
 }
 
 /** Turns a dBFS reading into something a teenager would actually parse. */

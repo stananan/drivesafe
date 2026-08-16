@@ -73,36 +73,17 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
 - [ ] **Parent alert preferences are cosmetic.** The toggles in
   `(parent)/settings.tsx` are local state that nothing reads. Either wire them
   to the profile row and honour them in `notifyFamilyParents`, or remove them.
-- [ ] **Broadcast channels are not access-controlled.** Live audio levels go over
-  a Realtime broadcast channel named `drive-audio-<driveId>`. Broadcast is not
-  covered by RLS, so anyone who learned a drive id could subscribe. The id is a
-  uuid only exposed to that family, so this is obscurity rather than
-  enforcement — tighten it with Realtime Authorization policies.
+- [ ] **Loudness readings are one row a second.** An hour-long drive writes about
+  3,600 rows to `drive_audio_levels`. The graph downsamples to 60 bars anyway, so
+  bucketing on the phone before upload — a peak every five seconds, say — would
+  cut this by 5× with no visible difference.
+- [ ] **The parent's live graph refreshes on the 5 s poll,** so it lags the car
+  by up to five seconds. Fine for a noise graph; worth knowing before anyone
+  reads it as instantaneous.
 - [ ] **Push tokens are never cleaned up.** A parent who reinstalls leaves a dead
   token behind. Expo's push receipts report `DeviceNotRegistered`; we do not
   read receipts at all yet.
 - [ ] Audio monitoring stops if the driver backgrounds the app, same as GPS.
-
-## Parent listen-in
-
-The consent half is built: `profiles.listen_in_enabled`, a driver-only toggle in
-their profile, and a status card on the parent's live dashboard. The audio half
-is not.
-
-- [ ] **Build the streaming.** Needs `react-native-webrtc` plus a signalling
-  path and TURN, or a managed SFU (LiveKit, Agora, Daily). None of it works in
-  Expo Go, so this lands with the dev-build work.
-- [ ] **In-car indicator while the mic is open.** Non-negotiable — an
-  unmissable, persistent one on the driver's screen, not a toast.
-- [!] **Get a second opinion on the law before shipping it.** California is an
-  all-party consent state (Penal Code §632) and a teenager's car usually has
-  passengers who never agreed to anything. The driver's toggle is what the
-  design rests on; whether it is legally sufficient for the passengers is a
-  question for someone qualified, not for us.
-- [ ] Expect App Review scrutiny. Guideline 5.1.2 territory; the consent flow
-  and the indicator are what separate this from the spyware they reject.
-- [ ] Update the privacy policy again when the audio actually flows — the
-  current wording says the feature is not built.
 
 ## Nice to have
 

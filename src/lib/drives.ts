@@ -8,7 +8,7 @@
 
 import { scoreDrive } from '@/lib/scoring';
 import { requireSupabase } from '@/lib/supabase';
-import type { Drive, DriveEvent, DrivePoint, LinkedDriver } from '@/types/drive';
+import type { AudioLevel, Drive, DriveEvent, DrivePoint, LinkedDriver } from '@/types/drive';
 
 type DriveRow = {
   id: string;
@@ -44,7 +44,12 @@ type EventRow = {
 const DRIVE_COLUMNS =
   'id, driver_id, started_at, ended_at, distance_meters, top_speed, avg_speed, safety_score, audio_monitoring, current_speed, profiles!drives_driver_id_fkey(username)';
 
-function toDrive(row: DriveRow, events: DriveEvent[] = [], route: DrivePoint[] = []): Drive {
+function toDrive(
+  row: DriveRow,
+  events: DriveEvent[] = [],
+  route: DrivePoint[] = [],
+  audioLevels: AudioLevel[] = []
+): Drive {
   return {
     id: row.id,
     driverId: row.driver_id,
@@ -60,6 +65,7 @@ function toDrive(row: DriveRow, events: DriveEvent[] = [], route: DrivePoint[] =
     currentSpeed: row.current_speed,
     events,
     route,
+    audioLevels,
   };
 }
 
@@ -125,7 +131,7 @@ export async function getDrive(id: string): Promise<Drive | null> {
   if (error) throw new Error(error.message);
   if (!row) return null;
 
-  const [{ data: pointRows }, { data: eventRows }] = await Promise.all([
+  const [{ data: pointRows }, { data: eventRows }, audioLevels] = await Promise.all([
     supabase
       .from('drive_points')
       .select('recorded_at, lat, lon, speed, accuracy')
@@ -136,6 +142,7 @@ export async function getDrive(id: string): Promise<Drive | null> {
       .select('id, type, occurred_at, detail, lat, lon')
       .eq('drive_id', id)
       .order('occurred_at', { ascending: true }),
+    listAudioLevels(id),
   ]);
 
   const route: DrivePoint[] = ((pointRows ?? []) as PointRow[]).map((point) => ({
@@ -148,15 +155,13 @@ export async function getDrive(id: string): Promise<Drive | null> {
 
   const events = ((eventRows ?? []) as EventRow[]).map(toEvent);
 
-  return toDrive(row as unknown as DriveRow, events, route);
+  return toDrive(row as unknown as DriveRow, events, route, audioLevels);
 }
 
 export type LiveDrive = {
   drive: Drive;
   /** The driver's most recent published position, when they are sharing. */
   position: { lat: number; lon: number; at: number } | null;
-  /** Whether this driver has consented to a parent listening in. */
-  listenInEnabled: boolean;
 };
 
 /**
@@ -166,6 +171,10 @@ export type LiveDrive = {
  * drive ends, so mid-drive there is nothing there to draw. The live map follows
  * the driver's published position instead, which is a single row that updates
  * every few seconds rather than a polyline that grows all trip.
+ *
+ * Loudness readings *are* pulled, and from the start of the drive rather than
+ * from whenever the parent happened to open this screen — arriving late should
+ * not mean arriving to an empty graph.
  */
 export async function getLiveDrive(driveId: string): Promise<LiveDrive | null> {
   const supabase = requireSupabase();
@@ -181,7 +190,7 @@ export async function getLiveDrive(driveId: string): Promise<LiveDrive | null> {
 
   const row = data as unknown as DriveRow;
 
-  const [{ data: eventRows }, { data: profileRow }] = await Promise.all([
+  const [{ data: eventRows }, { data: profileRow }, audioLevels] = await Promise.all([
     supabase
       .from('drive_events')
       .select('id, type, occurred_at, detail, lat, lon')
@@ -189,15 +198,15 @@ export async function getLiveDrive(driveId: string): Promise<LiveDrive | null> {
       .order('occurred_at', { ascending: false }),
     supabase
       .from('profiles')
-      .select('last_lat, last_lon, last_location_at, location_sharing, listen_in_enabled')
+      .select('last_lat, last_lon, last_location_at, location_sharing')
       .eq('id', row.driver_id)
       .maybeSingle<{
         last_lat: number | null;
         last_lon: number | null;
         last_location_at: string | null;
         location_sharing: boolean;
-        listen_in_enabled: boolean;
       }>(),
+    listAudioLevels(driveId),
   ]);
 
   const events = ((eventRows ?? []) as EventRow[]).map(toEvent);
@@ -208,8 +217,7 @@ export async function getLiveDrive(driveId: string): Promise<LiveDrive | null> {
     profileRow.last_lon !== null;
 
   return {
-    drive: toDrive(row, events),
-    listenInEnabled: profileRow?.listen_in_enabled ?? false,
+    drive: toDrive(row, events, [], audioLevels),
     position: hasPosition
       ? {
           lat: profileRow.last_lat!,
@@ -360,19 +368,46 @@ export async function heartbeatDrive(input: {
     .eq('id', input.driveId);
 }
 
-/** Mirrors the driver's audio toggle so the parent sees it change live. */
-export async function setDriveAudioMonitoring(
+/**
+ * Appends cabin-loudness readings for a drive in progress.
+ *
+ * Written as the drive goes rather than at the end, so a parent who opens a live
+ * drive halfway through still sees the half they missed. Silent on failure: a
+ * lost batch costs a gap in a graph, which is never worth interrupting a drive.
+ */
+export async function appendAudioLevels(
   driveId: string,
-  enabled: boolean
+  samples: AudioLevel[]
 ): Promise<void> {
+  if (samples.length === 0) return;
+
   const supabase = requireSupabase();
 
-  const { error } = await supabase
-    .from('drives')
-    .update({ audio_monitoring: enabled })
-    .eq('id', driveId);
+  await supabase.from('drive_audio_levels').insert(
+    samples.map((sample) => ({
+      drive_id: driveId,
+      recorded_at: new Date(sample.t).toISOString(),
+      level: sample.level,
+    }))
+  );
+}
+
+/** Every loudness reading for a drive, oldest first. */
+export async function listAudioLevels(driveId: string): Promise<AudioLevel[]> {
+  const supabase = requireSupabase();
+
+  const { data, error } = await supabase
+    .from('drive_audio_levels')
+    .select('recorded_at, level')
+    .eq('drive_id', driveId)
+    .order('recorded_at', { ascending: true });
 
   if (error) throw new Error(error.message);
+
+  return ((data ?? []) as { recorded_at: string; level: number }[]).map((row) => ({
+    t: new Date(row.recorded_at).getTime(),
+    level: row.level,
+  }));
 }
 
 /** Records one event as it happens, rather than waiting for the drive to end. */
