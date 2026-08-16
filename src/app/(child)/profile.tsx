@@ -1,8 +1,9 @@
 import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, Switch, View } from 'react-native';
 
 import { AboutCard } from '@/components/about-card';
+import { DeleteAccountCard } from '@/components/delete-account-card';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -13,7 +14,7 @@ import { useSession } from '@/lib/session';
 
 export default function ChildProfileScreen() {
   const theme = useTheme();
-  const { profile, family, session, signOut, leaveFamily } = useSession();
+  const { profile, family, session, signOut, leaveFamily, setPreference } = useSession();
   const [permission, setPermission] = useState<Location.PermissionStatus | null>(null);
 
   useEffect(() => {
@@ -33,6 +34,14 @@ export default function ChildProfileScreen() {
   }, []);
 
   const granted = permission === Location.PermissionStatus.GRANTED;
+
+  async function togglePreference(
+    key: 'audioAlertsEnabled' | 'locationSharing',
+    next: boolean
+  ) {
+    const { error } = await setPreference(key, next);
+    if (error) Alert.alert('Could not save that', error);
+  }
 
   function confirmLeave() {
     Alert.alert(
@@ -60,10 +69,48 @@ export default function ChildProfileScreen() {
         </View>
       </Card>
 
+      <Card title="Audio distraction alerts">
+        <View style={styles.toggleRow}>
+          <ThemedText type="small" style={styles.toggleLabel}>
+            Listen for a loud cabin
+          </ThemedText>
+          <Switch
+            value={profile?.audioAlertsEnabled ?? false}
+            onValueChange={(next) => void togglePreference('audioAlertsEnabled', next)}
+            trackColor={{ true: theme.tint, false: theme.border }}
+          />
+        </View>
+
+        <ThemedText type="small" themeColor="textSecondary">
+          While you are driving, DriveSafe measures how loud it is using the microphone. If it stays
+          loud you get a warning on screen and your family is told. Nothing is recorded, saved, or
+          uploaded — only the loudness reading ever leaves your phone.
+        </ThemedText>
+      </Card>
+
+      <Card title="Location sharing">
+        <View style={styles.toggleRow}>
+          <ThemedText type="small" style={styles.toggleLabel}>
+            Share my location
+          </ThemedText>
+          <Switch
+            value={profile?.locationSharing ?? false}
+            onValueChange={(next) => void togglePreference('locationSharing', next)}
+            trackColor={{ true: theme.tint, false: theme.border }}
+          />
+        </View>
+
+        <ThemedText type="small" themeColor="textSecondary">
+          Puts you on the family map and lets a parent follow a drive you are on. Only your most
+          recent position is kept — DriveSafe never builds a history of where you have been outside
+          the drives you record.
+        </ThemedText>
+      </Card>
+
       <Card title="Your data">
         <ThemedText type="small" themeColor="textSecondary">
           Drives are recorded on this phone and shared only with your family. Audio distraction
-          detection will run on-device — DriveSafe never uploads what it hears.
+          alerts measure how loud the car is — DriveSafe never records or uploads what it hears.
         </ThemedText>
       </Card>
 
@@ -73,6 +120,8 @@ export default function ChildProfileScreen() {
         <Button label="Leave family" variant="secondary" onPress={confirmLeave} />
         <Button label="Sign out" variant="secondary" onPress={() => void signOut()} />
       </View>
+
+      <DeleteAccountCard />
     </Screen>
   );
 }
@@ -102,5 +151,15 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: Spacing.two,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+    minHeight: 32,
+  },
+  toggleLabel: {
+    flexShrink: 1,
   },
 });

@@ -12,11 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.drivesafe.app",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "DriveSafe uses your location to record your drive route and speed so your safety scores stay accurate.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "DriveSafe records drives in the background so a trip keeps logging even when your phone is locked or you switch apps.",
-        "UIBackgroundModes": [
-          "location"
-        ]
+        "NSLocationWhenInUseUsageDescription": "DriveSafe uses your location to record your drive route and speed so your safety scores stay accurate."
       }
     },
     "android": {
@@ -30,9 +26,7 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION"
+        "ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -55,7 +49,13 @@
           "imageWidth": 76
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "DriveSafe measures how loud it is in the car so it can warn you when noise gets distracting. Audio is measured on your phone and is never recorded, saved, or uploaded."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

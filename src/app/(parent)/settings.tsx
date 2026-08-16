@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { Alert, StyleSheet, Switch, View } from 'react-native';
 
 import { AboutCard } from '@/components/about-card';
+import { DeleteAccountCard } from '@/components/delete-account-card';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -110,6 +111,8 @@ export default function ParentSettingsScreen() {
       <AboutCard />
 
       <Button label="Sign out" variant="secondary" onPress={() => void signOut()} />
+
+      <DeleteAccountCard />
 
       <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
         DriveSafe shows a parent where their driver is and how the drive went. It is not a
