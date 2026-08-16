@@ -31,6 +31,20 @@ begin
   end if;
 end $$;
 
+-- Added after the first release, so it cannot go in the create above without
+-- breaking every project that already ran this file.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_enum e
+    join pg_type t on t.oid = e.enumtypid
+    where t.typname = 'drive_event_type' and e.enumlabel = 'loud_audio'
+  ) then
+    alter type public.drive_event_type add value 'loud_audio';
+  end if;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- Tables
 -- ---------------------------------------------------------------------------
@@ -63,7 +77,19 @@ alter table public.profiles
   add column if not exists last_lon double precision,
   add column if not exists last_location_at timestamptz,
   -- Anyone can stop broadcasting without leaving the family.
-  add column if not exists location_sharing boolean not null default true;
+  add column if not exists location_sharing boolean not null default true,
+  -- Expo push token, so a driver's phone can notify their parents directly.
+  -- Null until the device registers, and cleared when they decline the prompt.
+  add column if not exists push_token text,
+  -- Whether this driver wants audio distraction alerts. A preference rather than
+  -- a per-drive choice, so it survives between trips and lives with the rest of
+  -- the driver's settings.
+  add column if not exists audio_alerts_enabled boolean not null default false;
+
+-- DriveSafe briefly had a "let a parent listen in" consent flag. It was dropped:
+-- the app only ever measures loudness and never captures audio, so there was
+-- nothing for a driver to consent to.
+alter table public.profiles drop column if exists listen_in_enabled;
 
 create table if not exists public.drives (
   id              uuid primary key default gen_random_uuid(),
@@ -80,6 +106,17 @@ create table if not exists public.drives (
   safety_score    smallint not null default 100 check (safety_score between 0 and 100),
   created_at      timestamptz not null default now()
 );
+
+-- Live-drive columns. A drive row is now written when the drive *starts*, so a
+-- parent has something to watch; these carry the state that only matters while
+-- ended_at is still null.
+alter table public.drives
+  -- Whether the driver had audio distraction alerts switched on for this drive.
+  -- Kept per drive rather than per profile so history stays truthful about what
+  -- was actually being monitored at the time.
+  add column if not exists audio_monitoring boolean not null default false,
+  -- Most recent speed sample, metres per second. Only meaningful mid-drive.
+  add column if not exists current_speed double precision not null default 0;
 
 create index if not exists drives_driver_started_idx
   on public.drives (driver_id, started_at desc);
@@ -114,6 +151,24 @@ create table if not exists public.drive_events (
 );
 
 create index if not exists drive_events_drive_idx on public.drive_events (drive_id);
+
+-- Cabin loudness over the course of a drive, sampled every few seconds while
+-- audio alerts are on.
+--
+-- Stored rather than streamed because a parent who opens a live drive ten
+-- minutes in should see the ten minutes they missed, and because a finished
+-- drive is worth looking at as a whole. Only the reading is kept — there is no
+-- audio in this table, in this database, or anywhere off the driver's phone.
+create table if not exists public.drive_audio_levels (
+  id          bigserial primary key,
+  drive_id    uuid not null references public.drives (id) on delete cascade,
+  recorded_at timestamptz not null,
+  -- dBFS. 0 is the loudest the microphone can encode; a quiet car sits near -60.
+  level       double precision not null
+);
+
+create index if not exists drive_audio_levels_drive_idx
+  on public.drive_audio_levels (drive_id, recorded_at);
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -309,6 +364,35 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- Account deletion
+--
+-- Required by App Store Review guideline 5.1.1(v): an app that lets you create
+-- an account has to let you delete it from inside the app. A client holding the
+-- anon key cannot touch auth.users, so this runs SECURITY DEFINER as the table
+-- owner instead.
+--
+-- One delete is enough because the whole graph hangs off auth.users by
+-- ON DELETE CASCADE: profiles -> drives -> drive_points and drive_events. A
+-- parent's families row cascades too, which drops every member back to
+-- family_id null (profiles.family_id is ON DELETE SET NULL) without touching
+-- the drives they already recorded.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.delete_account()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+
+  delete from auth.users where id = auth.uid();
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- Row-level security
 --
 -- The rule in one sentence: you can always see yourself, you can see everyone
@@ -321,6 +405,7 @@ alter table public.profiles enable row level security;
 alter table public.drives enable row level security;
 alter table public.drive_points enable row level security;
 alter table public.drive_events enable row level security;
+alter table public.drive_audio_levels enable row level security;
 
 drop policy if exists "read own family" on public.families;
 create policy "read own family"
@@ -413,6 +498,30 @@ create policy "driver inserts own events"
     )
   );
 
+drop policy if exists "read levels of visible drives" on public.drive_audio_levels;
+create policy "read levels of visible drives"
+  on public.drive_audio_levels for select
+  using (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id
+        and (
+          d.driver_id = auth.uid()
+          or (d.family_id is not null and d.family_id = public.my_family_id())
+        )
+    )
+  );
+
+drop policy if exists "driver inserts own levels" on public.drive_audio_levels;
+create policy "driver inserts own levels"
+  on public.drive_audio_levels for insert
+  with check (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id and d.driver_id = auth.uid()
+    )
+  );
+
 -- ---------------------------------------------------------------------------
 -- Keep a drive's family in step with its driver, so parents never lose sight of
 -- a drive because the row was written before the child joined the family.
@@ -443,7 +552,9 @@ create trigger drives_set_family
 
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.drives to authenticated;
-grant select, insert on public.drive_points, public.drive_events to authenticated;
+grant select, insert
+  on public.drive_points, public.drive_events, public.drive_audio_levels
+  to authenticated;
 grant select on public.families, public.profiles to authenticated;
 
 -- Column-level on purpose. A blanket UPDATE would let a child set their own
@@ -452,7 +563,14 @@ grant select on public.families, public.profiles to authenticated;
 -- Role and family changes therefore only happen inside the SECURITY DEFINER
 -- RPCs above, which run as the table owner and are unaffected by this grant.
 revoke update on public.profiles from authenticated;
-grant update (last_lat, last_lon, last_location_at, location_sharing)
+grant update (
+    last_lat,
+    last_lon,
+    last_location_at,
+    location_sharing,
+    push_token,
+    audio_alerts_enabled
+  )
   on public.profiles to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 
@@ -461,5 +579,32 @@ grant execute on function public.username_available(text) to anon, authenticated
 grant execute on function public.create_family(text) to authenticated;
 grant execute on function public.join_family(text) to authenticated;
 grant execute on function public.leave_family() to authenticated;
+grant execute on function public.delete_account() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Realtime
+--
+-- The parent's live drive dashboard subscribes to these tables so a loud audio
+-- alert, a noise reading, or the end of a drive lands without waiting for the
+-- next poll. Realtime still applies the policies above, so a subscription only
+-- ever delivers rows the subscriber could have selected anyway — which is what
+-- makes this preferable to a broadcast channel for anything private.
+-- ---------------------------------------------------------------------------
+
+do $$
+declare
+  target text;
+begin
+  foreach target in array array['drives', 'drive_events', 'drive_audio_levels'] loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = target
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', target);
+    end if;
+  end loop;
+end $$;
 grant execute on function public.my_family_id() to authenticated;
 grant execute on function public.my_role() to authenticated;

@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import * as Location from 'expo-location';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import MapView, { Marker, type Region } from 'react-native-maps';
@@ -15,8 +15,11 @@ import { useTheme } from '@/hooks/use-theme';
 import { listFamilyDrivers } from '@/lib/drives';
 import { formatRelative } from '@/lib/format';
 import { publishLocation } from '@/lib/locations';
+import { registerForPushNotifications } from '@/lib/notifications';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/use-async';
+import { useDriveActivity } from '@/lib/use-drive-activity';
+import { useFamilyAlerts } from '@/lib/use-family-alerts';
 import type { LinkedDriver } from '@/types/drive';
 
 /** Marin County, so an empty map still shows the district DriveSafe was built for. */
@@ -27,10 +30,16 @@ const FALLBACK_REGION: Region = {
   longitudeDelta: 0.2,
 };
 
-const REFRESH_INTERVAL_MS = 15_000;
+/**
+ * Backstop only — `useDriveActivity` is what actually makes a drive appear
+ * promptly. Kept short enough that a parent whose realtime connection is down
+ * still sees a drive start within a few seconds rather than a quarter-minute.
+ */
+const REFRESH_INTERVAL_MS = 5_000;
 
 export default function ParentLiveScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { profile, family } = useSession();
 
@@ -77,6 +86,15 @@ export default function ParentLiveScreen() {
     };
   }, [profile]);
 
+  // Parents are the ones who get notified, so this is where the push token is
+  // claimed. Silently does nothing where push cannot work — Expo Go, or before
+  // `eas init` has given the project an id.
+  useEffect(() => {
+    if (!profile) return;
+
+    void registerForPushNotifications(profile.id);
+  }, [profile]);
+
   useFocusEffect(
     useCallback(() => {
       void drivers.reload();
@@ -87,6 +105,24 @@ export default function ParentLiveScreen() {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
   );
+
+  // Loud-audio alerts arrive here over realtime, so a parent sitting on this
+  // tab sees them without waiting for the next poll.
+  const { alert, dismiss } = useFamilyAlerts({ enabled: Boolean(family) });
+
+  // A drive starting is what a parent is waiting for; it should not sit behind
+  // the refresh interval.
+  useDriveActivity({
+    enabled: Boolean(family),
+    onChange: () => void drivers.reload(),
+  });
+
+  // A new alert means something is happening right now; pull the driver list so
+  // the row underneath flips to "Driving now" in the same beat.
+  useEffect(() => {
+    if (alert) void drivers.reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alert]);
 
   const driverList = useMemo(() => drivers.data ?? [], [drivers.data]);
   const located = useMemo(
@@ -181,6 +217,30 @@ export default function ParentLiveScreen() {
         </View>
       </View>
 
+      {alert ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            dismiss();
+            router.push({ pathname: '/live/[id]', params: { id: alert.driveId } });
+          }}
+          style={({ pressed }) => [
+            styles.alertBanner,
+            {
+              backgroundColor: theme.warning,
+              bottom: BottomTabInset + insets.bottom + Spacing.three,
+              opacity: pressed ? 0.9 : 1,
+            },
+          ]}>
+          <ThemedText style={[styles.alertTitle, { color: theme.onTint }]}>
+            You should call {alert.driverName}
+          </ThemedText>
+          <ThemedText type="small" style={{ color: theme.onTint }}>
+            It has got loud in the car while they are driving. Tap to watch the drive.
+          </ThemedText>
+        </Pressable>
+      ) : null}
+
       <View style={[styles.sheet, { backgroundColor: theme.background }]}>
         {noDriversYet ? (
           <FamilyCodeOnboarding code={family?.code ?? ''} onCopy={() => void copyCode()} />
@@ -208,6 +268,13 @@ export default function ParentLiveScreen() {
                 driver={driver}
                 isSelected={selectedId === driver.id}
                 onPress={() => centerOn(driver)}
+                onWatchLive={() => {
+                  if (!driver.activeDriveId) return;
+                  router.push({
+                    pathname: '/live/[id]',
+                    params: { id: driver.activeDriveId },
+                  });
+                }}
               />
             ))}
           </ScrollView>
@@ -246,10 +313,12 @@ function DriverRow({
   driver,
   isSelected,
   onPress,
+  onWatchLive,
 }: {
   driver: LinkedDriver;
   isSelected: boolean;
   onPress: () => void;
+  onWatchLive: () => void;
 }) {
   const theme = useTheme();
   const isDriving = driver.activeDriveId !== null;
@@ -281,14 +350,32 @@ function DriverRow({
           type="small"
           style={{ color: isDriving ? theme.success : theme.textSecondary }}>
           {isDriving
-            ? 'Driving now'
+            ? driver.activeAudioMonitoring
+              ? 'Driving now · audio alerts on'
+              : 'Driving now'
             : hasLocation
               ? `Parked · updated ${formatRelative(driver.lastSeenAt ?? Date.now())}`
               : 'Not sharing location'}
         </ThemedText>
       </View>
 
-      <ScoreBadge score={driver.weekScore} showLabel={false} />
+      {isDriving ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Watch ${driver.name}'s drive`}
+          onPress={onWatchLive}
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.watchPill,
+            { backgroundColor: theme.tint, opacity: pressed ? 0.85 : 1 },
+          ]}>
+          <ThemedText type="small" style={{ color: theme.onTint, fontWeight: '600' }}>
+            Watch
+          </ThemedText>
+        </Pressable>
+      ) : (
+        <ScoreBadge score={driver.weekScore} showLabel={false} />
+      )}
     </Pressable>
   );
 }
@@ -357,6 +444,30 @@ const styles = StyleSheet.create({
   driverText: {
     flex: 1,
     gap: Spacing.half,
+  },
+  watchPill: {
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  // Floats over the driver list rather than pushing it around, so an alert
+  // arriving mid-scroll does not move what the parent is already reading.
+  alertBanner: {
+    position: 'absolute',
+    left: Spacing.three,
+    right: Spacing.three,
+    borderRadius: Radius.medium,
+    padding: Spacing.three,
+    gap: Spacing.half,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  alertTitle: {
+    fontSize: 17,
+    fontWeight: '700',
   },
   onboarding: {
     gap: Spacing.three,

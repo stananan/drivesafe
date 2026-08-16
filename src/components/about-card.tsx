@@ -1,13 +1,20 @@
 import Constants from 'expo-constants';
+import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
-/** Credits and build info. Shown at the bottom of both Settings screens. */
+/**
+ * Credits and build info. Shown at the bottom of both Settings screens, which
+ * is also what makes the privacy policy reachable from either interface — App
+ * Review wants it linked inside the app, not only in the store listing.
+ */
 export function AboutCard() {
+  const router = useRouter();
   const version = Constants.expoConfig?.version ?? '0.1.0';
 
   return (
@@ -19,6 +26,8 @@ export function AboutCard() {
         <Row label="Version" value={version} />
         <Row label="Cloud sync" value={isSupabaseConfigured ? 'Connected' : 'Not configured'} />
       </View>
+
+      <Button label="Privacy policy" variant="secondary" onPress={() => router.push('/privacy')} />
     </Card>
   );
 }

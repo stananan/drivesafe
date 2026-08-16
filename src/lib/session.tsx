@@ -36,6 +36,16 @@ type SessionValue = {
   createFamily: (name: string) => Promise<{ error: string | null }>;
   joinFamily: (code: string) => Promise<{ error: string | null }>;
   leaveFamily: () => Promise<{ error: string | null }>;
+  /** Permanently deletes the account and every drive attached to it. */
+  deleteAccount: () => Promise<{ error: string | null }>;
+  /**
+   * Updates one of the caller's own preferences. Column-level grants in the
+   * schema mean these are the only profile fields a client can write.
+   */
+  setPreference: (
+    key: 'audioAlertsEnabled' | 'locationSharing',
+    value: boolean
+  ) => Promise<{ error: string | null }>;
 
   /** Re-reads the profile and family, e.g. after another device changes them. */
   refresh: () => Promise<void>;
@@ -48,6 +58,8 @@ type ProfileRow = {
   username: string;
   role: Role;
   family_id: string | null;
+  audio_alerts_enabled: boolean;
+  location_sharing: boolean;
 };
 
 type FamilyRow = {
@@ -63,6 +75,8 @@ function toProfile(row: ProfileRow): Profile {
     username: row.username,
     role: row.role,
     familyId: row.family_id,
+    audioAlertsEnabled: row.audio_alerts_enabled,
+    locationSharing: row.location_sharing,
   };
 }
 
@@ -101,7 +115,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     const { data: profileRow, error } = await supabase
       .from('profiles')
-      .select('id, username, role, family_id')
+      .select('id, username, role, family_id, audio_alerts_enabled, location_sharing')
       .eq('id', userId)
       .maybeSingle<ProfileRow>();
 
@@ -270,6 +284,54 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return { error: null };
   }, [configError, loadProfile, session]);
 
+  const deleteAccount = useCallback<SessionValue['deleteAccount']>(async () => {
+    const supabase = getSupabase();
+    if (!supabase) return { error: configError };
+
+    const { error } = await supabase.rpc('delete_account');
+    if (error) return { error: friendlyAuthError(error) };
+
+    // Same teardown as signOut: drop local state first so the router falls back
+    // to the auth screens instead of refetching a profile that no longer exists.
+    loadToken.current++;
+    setProfile(null);
+    setFamily(null);
+    setSession(null);
+
+    // The server-side user is already gone, so a global sign-out would only be
+    // a request against a dead session. Local scope clears the stored tokens.
+    await supabase.auth.signOut({ scope: 'local' });
+
+    return { error: null };
+  }, [configError]);
+
+  const setPreference = useCallback<SessionValue['setPreference']>(
+    async (key, value) => {
+      const supabase = getSupabase();
+      if (!supabase || !session?.user.id) return { error: configError };
+
+      const column =
+        key === 'audioAlertsEnabled' ? 'audio_alerts_enabled' : 'location_sharing';
+
+      // Optimistic: the switch should move under the thumb, not after a round
+      // trip. A failure below puts it back.
+      setProfile((current) => (current ? { ...current, [key]: value } : current));
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ [column]: value })
+        .eq('id', session.user.id);
+
+      if (error) {
+        setProfile((current) => (current ? { ...current, [key]: !value } : current));
+        return { error: friendlyAuthError(error) };
+      }
+
+      return { error: null };
+    },
+    [configError, session]
+  );
+
   const refresh = useCallback(async () => {
     await loadProfile(session?.user.id);
   }, [loadProfile, session]);
@@ -287,6 +349,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       createFamily,
       joinFamily,
       leaveFamily,
+      deleteAccount,
+      setPreference,
       refresh,
     }),
     [
@@ -301,6 +365,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       createFamily,
       joinFamily,
       leaveFamily,
+      deleteAccount,
+      setPreference,
       refresh,
     ]
   );

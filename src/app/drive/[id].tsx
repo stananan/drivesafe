@@ -1,6 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
+import { AudioLevelGraph } from '@/components/audio-level-graph';
 import { DriveRouteMap } from '@/components/drive-route-map';
 import { ThemedText } from '@/components/themed-text';
 import { Card } from '@/components/ui/card';
@@ -20,6 +21,7 @@ const EVENT_LABELS: Record<DriveEvent['type'], string> = {
   hard_brake: 'Hard brake',
   rapid_accel: 'Rapid acceleration',
   phone_distraction: 'Phone distraction',
+  loud_audio: 'Loud in the car',
 };
 
 /** Shared by both interfaces — a parent and their driver see the same trip detail. */
@@ -61,6 +63,20 @@ export default function DriveDetailScreen() {
           <Stat label="GPS points" value={`${drive.route.length}`} />
         </StatRow>
       </Card>
+
+      {drive.audioLevels.length > 0 ? (
+        <Card title="Cabin noise">
+          <AudioLevelGraph
+            levels={drive.audioLevels.map((sample) => sample.level)}
+            variant="line"
+            height={120}
+          />
+          <ThemedText type="small" themeColor="textSecondary">
+            How loud it was across the whole drive. The dashed line is where DriveSafe warns the
+            driver; peaks reaching it are what cost points.
+          </ThemedText>
+        </Card>
+      ) : null}
 
       <Card title="Events" meta={`${drive.events.length} flagged`}>
         {drive.events.length === 0 ? (
