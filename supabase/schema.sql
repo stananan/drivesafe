@@ -186,10 +186,16 @@ create table if not exists public.drive_clips (
   -- Start of the earliest part.
   recorded_at      timestamptz not null,
   duration_seconds double precision not null default 0,
-  -- False when the phone would not record sound alongside loudness monitoring.
-  has_audio        boolean not null default true,
   created_at       timestamptz not null default now()
 );
+
+-- Added after drive_clips already existed in live projects. It has to be its own
+-- statement: `create table if not exists` does nothing at all when the table is
+-- already there, so a column declared inside that block above would never
+-- appear on any database that had run this file before.
+alter table public.drive_clips
+  -- False when the phone would not record sound alongside loudness monitoring.
+  add column if not exists has_audio boolean not null default true;
 
 create index if not exists drive_clips_drive_idx
   on public.drive_clips (drive_id, recorded_at desc);
