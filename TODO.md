@@ -18,9 +18,9 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
 - [!] **Apple Developer Program enrolment.** $99/yr, and the enrollee must be 18+.
   A parent or guardian enrols, or we enrol as an organisation (needs a D-U-N-S
   number). Apple's identity check can take several days — start this first.
-- [ ] **Re-run `supabase/schema.sql`** against the live project. Account deletion,
-  the live-drive columns, `loud_audio`, `push_token`, and the realtime
-  publication all live there. The file is idempotent; re-running it is safe.
+- [ ] **Re-run `supabase/schema.sql`** against the live project after every
+  change to it. The file is idempotent; re-running it is safe, and it is the
+  only migration story this project has.
 - [ ] **Fill in the privacy nutrition labels** in App Store Connect. We collect
   precise location tied to identity, plus a push token. Answer honestly — this
   is the section reviewers check hardest for a teen-location app.
@@ -77,11 +77,11 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
   3,600 rows to `drive_audio_levels`. The graph downsamples to 60 bars anyway, so
   bucketing on the phone before upload — a peak every five seconds, say — would
   cut this by 5× with no visible difference.
-- [ ] **The parent's noise graph lags the car by roughly 2–4 seconds** — the
-  driver flushes readings every 2 s and the parent polls every 2 s. Closing that
-  further means realtime on `drive_audio_levels` (add it to the
-  `supabase_realtime` publication and subscribe), which trades a schema change
-  for about two seconds.
+- [ ] **The parent's noise graph lags the car by roughly 2–3 seconds.** Realtime
+  delivery is under a second; what remains is the driver's 2 s flush interval,
+  which batches readings to keep this at one insert every two seconds rather
+  than one a second. Drop `AUDIO_FLUSH_MS` if that second ever matters more than
+  the request volume.
 - [ ] **Push tokens are never cleaned up.** A parent who reinstalls leaves a dead
   token behind. Expo's push receipts report `DeviceNotRegistered`; we do not
   read receipts at all yet.
