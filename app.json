@@ -55,6 +55,14 @@
         {
           "microphonePermission": "DriveSafe measures how loud it is in the car so it can warn you when noise gets distracting. Audio is measured on your phone and is never recorded, saved, or uploaded."
         }
+      ],
+      "expo-video",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "DriveSafe records a dashcam loop while you drive and keeps only the last minute, so you can save what just happened. Clips are video only and never include sound.",
+          "recordAudioAndroid": false
+        }
       ]
     ],
     "experiments": {

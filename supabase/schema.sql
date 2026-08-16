@@ -84,7 +84,9 @@ alter table public.profiles
   -- Whether this driver wants audio distraction alerts. A preference rather than
   -- a per-drive choice, so it survives between trips and lives with the rest of
   -- the driver's settings.
-  add column if not exists audio_alerts_enabled boolean not null default false;
+  add column if not exists audio_alerts_enabled boolean not null default false,
+  -- Whether the dashcam records while this driver is on a drive.
+  add column if not exists dashcam_enabled boolean not null default false;
 
 -- DriveSafe briefly had a "let a parent listen in" consent flag. It was dropped:
 -- the app only ever measures loudness and never captures audio, so there was
@@ -169,6 +171,45 @@ create table if not exists public.drive_audio_levels (
 
 create index if not exists drive_audio_levels_drive_idx
   on public.drive_audio_levels (drive_id, recorded_at);
+
+-- Dashcam clips.
+--
+-- A clip is video only. The microphone belongs to the loudness monitor, and
+-- recording the cabin would break the promise the rest of the app makes, so
+-- `mute` is set on the camera and no clip has ever had a soundtrack.
+create table if not exists public.drive_clips (
+  id               uuid primary key default gen_random_uuid(),
+  drive_id         uuid not null references public.drives (id) on delete cascade,
+  -- What caused this clip to be kept rather than discarded.
+  reason           text not null check (reason in ('manual', 'loud_audio')),
+  -- Start of the earliest part.
+  recorded_at      timestamptz not null,
+  duration_seconds double precision not null default 0,
+  created_at       timestamptz not null default now()
+);
+
+create index if not exists drive_clips_drive_idx
+  on public.drive_clips (drive_id, recorded_at desc);
+
+-- One clip is several files.
+--
+-- Phones cannot ring-buffer video, so the dashcam records fixed-length segments
+-- and keeps the trailing few. Saving a clip keeps whichever segments were on
+-- disk at that moment. Nothing available to an Expo app can stitch them into a
+-- single file, so the parts stay separate and the player runs them in order.
+create table if not exists public.drive_clip_parts (
+  id               uuid primary key default gen_random_uuid(),
+  clip_id          uuid not null references public.drive_clips (id) on delete cascade,
+  part_index       integer not null,
+  -- Path within the `drive-clips` bucket: drives/<drive_id>/<clip_id>/<n>.mp4
+  storage_path     text not null,
+  duration_seconds double precision not null default 0,
+  bytes            bigint not null default 0,
+  unique (clip_id, part_index)
+);
+
+create index if not exists drive_clip_parts_clip_idx
+  on public.drive_clip_parts (clip_id, part_index);
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -406,6 +447,8 @@ alter table public.drives enable row level security;
 alter table public.drive_points enable row level security;
 alter table public.drive_events enable row level security;
 alter table public.drive_audio_levels enable row level security;
+alter table public.drive_clips enable row level security;
+alter table public.drive_clip_parts enable row level security;
 
 drop policy if exists "read own family" on public.families;
 create policy "read own family"
@@ -522,6 +565,68 @@ create policy "driver inserts own levels"
     )
   );
 
+drop policy if exists "read clips of visible drives" on public.drive_clips;
+create policy "read clips of visible drives"
+  on public.drive_clips for select
+  using (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id
+        and (
+          d.driver_id = auth.uid()
+          or (d.family_id is not null and d.family_id = public.my_family_id())
+        )
+    )
+  );
+
+drop policy if exists "driver inserts own clips" on public.drive_clips;
+create policy "driver inserts own clips"
+  on public.drive_clips for insert
+  with check (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id and d.driver_id = auth.uid()
+    )
+  );
+
+drop policy if exists "driver deletes own clips" on public.drive_clips;
+create policy "driver deletes own clips"
+  on public.drive_clips for delete
+  using (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id and d.driver_id = auth.uid()
+    )
+  );
+
+drop policy if exists "read parts of visible clips" on public.drive_clip_parts;
+create policy "read parts of visible clips"
+  on public.drive_clip_parts for select
+  using (
+    exists (
+      select 1
+      from public.drive_clips c
+      join public.drives d on d.id = c.drive_id
+      where c.id = clip_id
+        and (
+          d.driver_id = auth.uid()
+          or (d.family_id is not null and d.family_id = public.my_family_id())
+        )
+    )
+  );
+
+drop policy if exists "driver inserts own parts" on public.drive_clip_parts;
+create policy "driver inserts own parts"
+  on public.drive_clip_parts for insert
+  with check (
+    exists (
+      select 1
+      from public.drive_clips c
+      join public.drives d on d.id = c.drive_id
+      where c.id = clip_id and d.driver_id = auth.uid()
+    )
+  );
+
 -- ---------------------------------------------------------------------------
 -- Keep a drive's family in step with its driver, so parents never lose sight of
 -- a drive because the row was written before the child joined the family.
@@ -553,8 +658,11 @@ create trigger drives_set_family
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.drives to authenticated;
 grant select, insert
-  on public.drive_points, public.drive_events, public.drive_audio_levels
+  on public.drive_points, public.drive_events, public.drive_audio_levels,
+     public.drive_clip_parts
   to authenticated;
+-- Clips are deletable so a driver can take back footage they did not mean to keep.
+grant select, insert, delete on public.drive_clips to authenticated;
 grant select on public.families, public.profiles to authenticated;
 
 -- Column-level on purpose. A blanket UPDATE would let a child set their own
@@ -569,7 +677,8 @@ grant update (
     last_location_at,
     location_sharing,
     push_token,
-    audio_alerts_enabled
+    audio_alerts_enabled,
+    dashcam_enabled
   )
   on public.profiles to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
@@ -580,6 +689,62 @@ grant execute on function public.create_family(text) to authenticated;
 grant execute on function public.join_family(text) to authenticated;
 grant execute on function public.leave_family() to authenticated;
 grant execute on function public.delete_account() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Dashcam storage
+--
+-- Private bucket. Clips are served through short-lived signed URLs rather than
+-- public links, because a public bucket would make every clip readable by
+-- anyone holding the path — which for footage from inside a teenager's car is
+-- not a risk worth taking for the convenience.
+--
+-- Access is decided from the path. Clips live at
+--   drives/<drive_id>/<clip_id>/<n>.mp4
+-- so `storage.foldername(name)` yields {drives, <drive_id>, <clip_id>} and the
+-- policies below resolve element 2 back to a drive to ask the same question the
+-- rest of the schema asks: is this yours, or your family's?
+-- ---------------------------------------------------------------------------
+
+insert into storage.buckets (id, name, public)
+values ('drive-clips', 'drive-clips', false)
+on conflict (id) do nothing;
+
+drop policy if exists "read family clip files" on storage.objects;
+create policy "read family clip files"
+  on storage.objects for select
+  using (
+    bucket_id = 'drive-clips'
+    and exists (
+      select 1 from public.drives d
+      where d.id::text = (storage.foldername(name))[2]
+        and (
+          d.driver_id = auth.uid()
+          or (d.family_id is not null and d.family_id = public.my_family_id())
+        )
+    )
+  );
+
+drop policy if exists "driver writes own clip files" on storage.objects;
+create policy "driver writes own clip files"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'drive-clips'
+    and exists (
+      select 1 from public.drives d
+      where d.id::text = (storage.foldername(name))[2] and d.driver_id = auth.uid()
+    )
+  );
+
+drop policy if exists "driver deletes own clip files" on storage.objects;
+create policy "driver deletes own clip files"
+  on storage.objects for delete
+  using (
+    bucket_id = 'drive-clips'
+    and exists (
+      select 1 from public.drives d
+      where d.id::text = (storage.foldername(name))[2] and d.driver_id = auth.uid()
+    )
+  );
 
 -- ---------------------------------------------------------------------------
 -- Realtime
@@ -595,7 +760,12 @@ do $$
 declare
   target text;
 begin
-  foreach target in array array['drives', 'drive_events', 'drive_audio_levels'] loop
+  foreach target in array array[
+    'drives',
+    'drive_events',
+    'drive_audio_levels',
+    'drive_clips'
+  ] loop
     if not exists (
       select 1 from pg_publication_tables
       where pubname = 'supabase_realtime'

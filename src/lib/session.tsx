@@ -43,7 +43,7 @@ type SessionValue = {
    * schema mean these are the only profile fields a client can write.
    */
   setPreference: (
-    key: 'audioAlertsEnabled' | 'locationSharing',
+    key: 'audioAlertsEnabled' | 'dashcamEnabled' | 'locationSharing',
     value: boolean
   ) => Promise<{ error: string | null }>;
 
@@ -59,6 +59,7 @@ type ProfileRow = {
   role: Role;
   family_id: string | null;
   audio_alerts_enabled: boolean;
+  dashcam_enabled: boolean;
   location_sharing: boolean;
 };
 
@@ -76,6 +77,7 @@ function toProfile(row: ProfileRow): Profile {
     role: row.role,
     familyId: row.family_id,
     audioAlertsEnabled: row.audio_alerts_enabled,
+    dashcamEnabled: row.dashcam_enabled,
     locationSharing: row.location_sharing,
   };
 }
@@ -115,7 +117,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     const { data: profileRow, error } = await supabase
       .from('profiles')
-      .select('id, username, role, family_id, audio_alerts_enabled, location_sharing')
+      .select(
+        'id, username, role, family_id, audio_alerts_enabled, dashcam_enabled, location_sharing'
+      )
       .eq('id', userId)
       .maybeSingle<ProfileRow>();
 
@@ -310,8 +314,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const supabase = getSupabase();
       if (!supabase || !session?.user.id) return { error: configError };
 
-      const column =
-        key === 'audioAlertsEnabled' ? 'audio_alerts_enabled' : 'location_sharing';
+      const column = {
+        audioAlertsEnabled: 'audio_alerts_enabled',
+        dashcamEnabled: 'dashcam_enabled',
+        locationSharing: 'location_sharing',
+      }[key];
 
       // Optimistic: the switch should move under the thumb, not after a round
       // trip. A failure below puts it back.

@@ -33,11 +33,21 @@ If the car stays loud for a few seconds, DriveSafe warns the driver on screen an
 
 While alerts are on, DriveSafe also saves a loudness reading about once a second for the drive, so your family can see a graph of how noisy the car was — both while you are driving and afterwards on the drive. These readings are numbers only. They are deleted along with the drive, and deleting your account removes them entirely.
 
+## Dashcam
+
+This feature is off by default and only a driver can turn it on, from their profile.
+
+While it is on and a drive is recording, the camera records continuously in short segments and keeps only the last minute. Everything older is deleted on the phone and is never sent anywhere. Footage leaves the phone only when a clip is deliberately kept — either because the driver tapped Save that, or because DriveSafe flagged the car as loud.
+
+Saved clips are video only. They have no sound, because the microphone is used to measure loudness and nothing else. Clips are stored privately and are visible to your family, nobody else. Deleting the drive or your account deletes them.
+
 ## What DriveSafe does not collect
 
-DriveSafe does not use your camera, contacts, or photos, and does not collect advertising identifiers. It contains no third-party analytics, advertising, or tracking software.
+DriveSafe does not use your contacts or photos, and does not collect advertising identifiers. It contains no third-party analytics, advertising, or tracking software.
 
-It never records, keeps, or transmits audio. The microphone is read only as a loudness meter, only during a drive, and only when the driver has switched audio alerts on.
+It never records, keeps, or transmits audio — not from the microphone, and not on dashcam clips. The microphone is read only as a loudness meter, only during a drive, and only when the driver has switched audio alerts on.
+
+The camera is used only when the driver has switched the dashcam on, and only while a drive is recording.
 
 ## When location is collected
 

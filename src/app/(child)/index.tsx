@@ -1,3 +1,4 @@
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
@@ -10,6 +11,7 @@ import { Screen } from '@/components/ui/screen';
 import { Stat, StatRow } from '@/components/ui/stat';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { saveClip } from '@/lib/clips';
 import {
   appendAudioLevels,
   finishDrive,
@@ -22,7 +24,9 @@ import { publishLocation } from '@/lib/locations';
 import { notifyFamilyParents } from '@/lib/notifications';
 import { useSession } from '@/lib/session';
 import { describeLevel, useAudioMonitor } from '@/lib/use-audio-monitor';
+import { useDashcam } from '@/lib/use-dashcam';
 import { useDriveTracker } from '@/lib/use-drive-tracker';
+import type { DriveClipReason } from '@/types/drive';
 
 /**
  * How often the phone tells the family where it is and how the drive is going.
@@ -66,16 +70,72 @@ export default function DriveScreen() {
   // time — a row per sample would be a write every fraction of a second.
   const pendingLevels = useRef<{ t: number; level: number }[]>([]);
 
-  // The driver sets this once in their profile; a drive just honours it.
-  const audioEnabled = profile?.audioAlertsEnabled ?? false;
-
   const isRecording = tracker.status === 'recording';
   const isStarting = tracker.status === 'requesting';
 
-  // The heartbeat and the loud-audio handler both need the newest tracker
-  // numbers, but neither should re-arm every time a GPS fix lands.
+  // The heartbeat, the loud-audio handler, and the clip saver all need the
+  // newest values, but none should re-arm every time a GPS fix lands.
   const latest = useRef({ tracker, driveId, profile });
   latest.current = { tracker, driveId, profile };
+
+  // The driver sets these once in their profile; a drive just honours them.
+  const audioEnabled = profile?.audioAlertsEnabled ?? false;
+  const dashcamEnabled = profile?.dashcamEnabled ?? false;
+
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [isSavingClip, setIsSavingClip] = useState(false);
+  const [lastClipAt, setLastClipAt] = useState<number | null>(null);
+
+  const hasCamera = cameraPermission?.granted ?? false;
+  const dashcam = useDashcam({ enabled: isRecording && dashcamEnabled && hasCamera });
+
+  // Ask once, when the driver has actually asked for the feature.
+  useEffect(() => {
+    if (!dashcamEnabled || cameraPermission?.granted || !cameraPermission?.canAskAgain) return;
+
+    void requestCameraPermission();
+  }, [dashcamEnabled, cameraPermission, requestCameraPermission]);
+
+  const keepClip = useCallback(
+    async (reason: DriveClipReason) => {
+      const id = latest.current.driveId;
+      if (!id) return;
+
+      setIsSavingClip(true);
+
+      const segments = await dashcam.flush();
+
+      try {
+        if (segments.length === 0) return;
+
+        await saveClip({
+          driveId: id,
+          reason,
+          recordedAt: segments[0].startedAt,
+          parts: segments.map((segment) => ({
+            uri: segment.uri,
+            durationSeconds: segment.durationSeconds,
+          })),
+        });
+
+        setLastClipAt(Date.now());
+      } catch (error) {
+        Alert.alert(
+          'Could not save that clip',
+          error instanceof Error ? error.message : 'Check your connection and try again.'
+        );
+      } finally {
+        dashcam.release(segments);
+        setIsSavingClip(false);
+      }
+    },
+    [dashcam]
+  );
+
+  // Held in a ref so the loud-audio handler can reach the newest version
+  // without re-subscribing the microphone every render.
+  const keepClipRef = useRef(keepClip);
+  keepClipRef.current = keepClip;
 
   const handleLoud = useCallback((level: number) => {
     const at = Date.now();
@@ -98,6 +158,10 @@ export default function DriveScreen() {
         // The on-screen warning already did the urgent half of the job.
       });
     }
+
+    // The dashcam exists for moments like this one, so it does not wait to be
+    // asked. Saving is best-effort: the warning and the event matter more.
+    void keepClipRef.current('loud_audio').catch(() => {});
 
     if (who?.familyId) {
       void notifyFamilyParents({
@@ -323,6 +387,57 @@ export default function DriveScreen() {
         )}
       </Card>
 
+      {isRecording && dashcamEnabled ? (
+        <Card
+          title="Dashcam"
+          meta={dashcam.status === 'recording' ? `${dashcam.buffered * 15}s buffered` : ''}>
+          {hasCamera ? (
+            <>
+              <View style={styles.cameraWrap}>
+                <CameraView
+                  ref={dashcam.cameraRef}
+                  style={StyleSheet.absoluteFill}
+                  facing="back"
+                  mode="video"
+                  // Video only. The microphone belongs to the loudness monitor,
+                  // and DriveSafe does not record audio.
+                  mute
+                />
+              </View>
+
+              <ThemedText type="small" themeColor="textSecondary">
+                Recording on a loop and keeping only the last minute. Video only — no sound is
+                captured. Tap below to keep what just happened.
+              </ThemedText>
+
+              <Button
+                label={isSavingClip ? 'Saving clip…' : 'Save that'}
+                variant="secondary"
+                loading={isSavingClip}
+                onPress={() => void keepClip('manual')}
+              />
+
+              {lastClipAt ? (
+                <ThemedText type="small" themeColor="textSecondary">
+                  Clip saved. Your family can watch it on this drive.
+                </ThemedText>
+              ) : null}
+
+              {dashcam.status === 'error' && dashcam.errorMessage ? (
+                <ThemedText type="small" style={{ color: theme.danger }}>
+                  {dashcam.errorMessage}
+                </ThemedText>
+              ) : null}
+            </>
+          ) : (
+            <ThemedText type="small" themeColor="textSecondary">
+              The dashcam is on in your profile, but camera access is blocked. Turn it on in your
+              phone settings, or switch the dashcam off in your profile.
+            </ThemedText>
+          )}
+        </Card>
+      ) : null}
+
       {audio.status === 'monitoring' ? (
         <Card title="Cabin noise">
           <AudioLevelGraph levels={audio.levels} height={80} />
@@ -423,6 +538,12 @@ function UpcomingRow({ label, detail }: { label: string; detail: string }) {
 }
 
 const styles = StyleSheet.create({
+  cameraWrap: {
+    height: 180,
+    borderRadius: Radius.medium,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
   speedBlock: {
     alignItems: 'center',
     gap: Spacing.half,
