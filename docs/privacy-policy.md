@@ -31,15 +31,7 @@ While it is on, DriveSafe reads your microphone's level meter — a single numbe
 
 If the car stays loud for a few seconds, DriveSafe warns the driver on screen and tells their parents that it happened. What gets saved and shared is the fact of the alert, when it happened, how loud it was, and where — never any sound.
 
-While alerts are on, the loudness reading is also sent live to a parent watching that drive, about once a second, so they can see a graph of how noisy the car is. Those readings are not stored anywhere: they exist only while the drive is happening and are gone when the parent closes the screen.
-
-## Letting a parent listen in
-
-DriveSafe has a setting that lets a driver allow a parent to listen to their car during a drive. It is off unless the driver turns it on, only the driver can change it, and a parent cannot switch it on for them.
-
-The listening feature itself is not built yet — today the setting only records the driver's answer. If it ships, the driver will see a clear indicator for as long as the microphone is open.
-
-Anyone riding in the car can be heard when someone is listening, and they have not agreed to anything. That is why this is the driver's decision alone, and why we would rather it stay off than be switched on casually.
+While alerts are on, DriveSafe also saves a loudness reading about once a second for the drive, so your family can see a graph of how noisy the car was — both while you are driving and afterwards on the drive. These readings are numbers only. They are deleted along with the drive, and deleting your account removes them entirely.
 
 ## What DriveSafe does not collect
 

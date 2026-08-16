@@ -12,8 +12,18 @@ export type Profile = {
   role: Role;
   /** Null until the user creates or joins a family. */
   familyId: string | null;
-  /** Whether this driver lets a parent listen in during a drive. Off by default. */
-  listenInEnabled: boolean;
+  /** Whether audio distraction alerts run during this driver's drives. */
+  audioAlertsEnabled: boolean;
+  /** Whether this person broadcasts their position to the family. */
+  locationSharing: boolean;
+};
+
+/** One cabin-loudness reading taken during a drive. */
+export type AudioLevel = {
+  /** Unix epoch milliseconds. */
+  t: number;
+  /** dBFS: 0 is the loudest the microphone can encode, quiet is near -60. */
+  level: number;
 };
 
 export type Family = {
@@ -81,6 +91,8 @@ export type Drive = {
   events: DriveEvent[];
   /** Route polyline. Empty in list views, populated on the detail screen. */
   route: DrivePoint[];
+  /** Loudness readings. Empty in list views and when audio alerts were off. */
+  audioLevels: AudioLevel[];
 };
 
 /** A child in the same family, as the parent's Live tab sees them. */

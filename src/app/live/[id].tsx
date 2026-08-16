@@ -12,7 +12,6 @@ import { Screen } from '@/components/ui/screen';
 import { Stat, StatRow } from '@/components/ui/stat';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useAudioLevelFeed } from '@/lib/audio-broadcast';
 import { getLiveDrive } from '@/lib/drives';
 import { formatDuration, formatMiles, formatMph, formatRelative } from '@/lib/format';
 import { getSupabase } from '@/lib/supabase';
@@ -93,12 +92,6 @@ export default function LiveDriveScreen() {
   const drive = live.data?.drive ?? null;
   const position = live.data?.position ?? null;
   const isActive = drive?.status === 'active';
-
-  // The driver's own loudness readings, streamed while they are recording.
-  const audioLevels = useAudioLevelFeed({
-    driveId: id ?? null,
-    enabled: Boolean(isActive && drive?.audioMonitoring),
-  });
 
   // A finished drive is not a live drive. The moment the driver ends it, hand
   // the parent the completed trip instead of leaving them on a dashboard whose
@@ -220,24 +213,16 @@ export default function LiveDriveScreen() {
         </ThemedText>
       </Card>
 
-      {isActive && drive.audioMonitoring ? (
-        <Card title="How loud it is in there">
-          <AudioLevelGraph levels={audioLevels} />
+      {drive.audioMonitoring ? (
+        <Card title="How loud it is in there" meta={`${drive.audioLevels.length} readings`}>
+          <AudioLevelGraph levels={drive.audioLevels.map((sample) => sample.level)} />
           <ThemedText type="small" themeColor="textSecondary">
-            {audioLevels.length === 0
-              ? 'Waiting for readings from their phone.'
-              : 'Taller bars mean a louder car. The line is where DriveSafe starts warning them.'}
+            {drive.audioLevels.length === 0
+              ? 'Waiting for the first readings from their phone.'
+              : 'The whole drive so far, not just since you opened this. Taller bars mean a louder car; the line is where DriveSafe starts warning them.'}
           </ThemedText>
         </Card>
       ) : null}
-
-      <Card title="Listening in">
-        <ThemedText type="small" themeColor="textSecondary">
-          {live.data?.listenInEnabled
-            ? `${drive.driverName} has allowed you to listen to their car during a drive. The feature itself is not built yet — when it is, they will see an indicator the whole time it is open.`
-            : `${drive.driverName} has not turned on listening. Only they can allow it, from their profile — a parent cannot switch it on for them.`}
-        </ThemedText>
-      </Card>
 
       <Card title="Alerts" meta={`${drive.events.length}`}>
         {drive.events.length === 0 ? (

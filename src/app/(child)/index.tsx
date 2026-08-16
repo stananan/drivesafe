@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, Switch, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 
-import { AudioLevelGraph } from '@/components/audio-level-graph';
 import { RoutePreview } from '@/components/route-preview';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
@@ -10,12 +9,11 @@ import { Screen } from '@/components/ui/screen';
 import { Stat, StatRow } from '@/components/ui/stat';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useAudioLevelBroadcast } from '@/lib/audio-broadcast';
 import {
+  appendAudioLevels,
   finishDrive,
   heartbeatDrive,
   logDriveEvent,
-  setDriveAudioMonitoring,
   startDrive,
 } from '@/lib/drives';
 import { formatDuration, formatMiles, formatMph } from '@/lib/format';
@@ -42,13 +40,19 @@ export default function DriveScreen() {
 
   const [lastDriveSummary, setLastDriveSummary] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [audioEnabled, setAudioEnabled] = useState(false);
   const [driveId, setDriveId] = useState<string | null>(null);
   const [loudAlert, setLoudAlert] = useState<{ at: number; level: number } | null>(null);
 
   // Counted here rather than read back from the database so a failed event
   // insert cannot quietly erase the score penalty.
   const loudCount = useRef(0);
+
+  // Readings wait here between heartbeats rather than being written one at a
+  // time — a row per sample would be a write every fraction of a second.
+  const pendingLevels = useRef<{ t: number; level: number }[]>([]);
+
+  // The driver sets this once in their profile; a drive just honours it.
+  const audioEnabled = profile?.audioAlertsEnabled ?? false;
 
   const isRecording = tracker.status === 'recording';
   const isStarting = tracker.status === 'requesting';
@@ -92,13 +96,18 @@ export default function DriveScreen() {
 
   const audio = useAudioMonitor({ enabled: isRecording && audioEnabled, onLoud: handleLoud });
 
-  // Push the level to whoever is watching this drive. Ephemeral — nothing about
-  // this is written down, it only exists while a parent has the screen open.
-  useAudioLevelBroadcast({
-    driveId,
-    level: audio.level,
-    enabled: isRecording && audioEnabled,
-  });
+  // Buffer one reading a second. The monitor samples faster than that, which is
+  // right for catching a spike but far more resolution than a graph needs.
+  const lastBufferedAt = useRef(0);
+  useEffect(() => {
+    if (audio.level === null) return;
+
+    const now = Date.now();
+    if (now - lastBufferedAt.current < 1_000) return;
+
+    lastBufferedAt.current = now;
+    pendingLevels.current.push({ t: now, level: audio.level });
+  }, [audio.level]);
 
   // Clear the warning on its own so a driver never has to interact with it.
   useEffect(() => {
@@ -134,6 +143,14 @@ export default function DriveScreen() {
           lon: current.point.lon,
         });
       }
+
+      // Hand off whatever the monitor has buffered since the last beat, so a
+      // parent opening the drive late still sees the part they missed.
+      if (pendingLevels.current.length > 0) {
+        const batch = pendingLevels.current;
+        pendingLevels.current = [];
+        await appendAudioLevels(driveId!, batch);
+      }
     }
 
     // Once immediately, so the parent sees the drive appear rather than waiting
@@ -165,16 +182,6 @@ export default function DriveScreen() {
         'Recording offline',
         'DriveSafe could not reach the server, so your family will not see this drive live. It will still save when you finish.'
       );
-    }
-  }
-
-  async function toggleAudio(next: boolean) {
-    setAudioEnabled(next);
-
-    if (driveId) {
-      void setDriveAudioMonitoring(driveId, next).catch(() => {
-        // A stale flag on the parent's screen is not worth an interruption.
-      });
     }
   }
 
@@ -221,6 +228,7 @@ export default function DriveScreen() {
       setDriveId(null);
       setLoudAlert(null);
       loudCount.current = 0;
+      pendingLevels.current = [];
       setIsSaving(false);
     }
   }
@@ -282,38 +290,23 @@ export default function DriveScreen() {
         )}
       </Card>
 
-      <Card title="Audio distraction alerts">
-        <View style={styles.toggleRow}>
-          <ThemedText type="small" style={styles.toggleLabel}>
-            {isRecording ? 'Listening for a loud cabin' : 'Listen for a loud cabin'}
+      {audio.status === 'denied' ? (
+        <Card title="Microphone access needed">
+          <ThemedText type="small" themeColor="textSecondary">
+            Audio distraction alerts are on in your profile, but the microphone is blocked, so
+            DriveSafe cannot tell how loud the car is. Turn it on in your phone settings, or switch
+            the alerts off in your profile.
           </ThemedText>
-          <Switch
-            value={audioEnabled}
-            onValueChange={(next) => void toggleAudio(next)}
-            trackColor={{ true: theme.tint, false: theme.border }}
-          />
-        </View>
+        </Card>
+      ) : null}
 
-        <ThemedText type="small" themeColor="textSecondary">
-          DriveSafe measures how loud it is using the microphone. Nothing is recorded, saved, or
-          uploaded — only the loudness reading leaves your phone, and only when it stays high.
-        </ThemedText>
-
-        {audio.status === 'monitoring' ? <AudioLevelGraph levels={audio.levels} /> : null}
-
-        {audio.status === 'denied' ? (
-          <ThemedText type="small" style={{ color: theme.warning }}>
-            Microphone access is off, so DriveSafe cannot listen. Turn it on in your phone settings
-            to use this.
-          </ThemedText>
-        ) : null}
-
-        {audio.status === 'error' && audio.errorMessage ? (
+      {audio.status === 'error' && audio.errorMessage ? (
+        <Card title="Audio alerts stopped">
           <ThemedText type="small" style={{ color: theme.danger }}>
             {audio.errorMessage}
           </ThemedText>
-        ) : null}
-      </Card>
+        </Card>
+      ) : null}
 
       {tracker.status === 'denied' ? (
         <Card title="Location access needed">
@@ -408,16 +401,6 @@ const styles = StyleSheet.create({
   alertTitle: {
     fontSize: 19,
     fontWeight: '700',
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.three,
-    minHeight: 32,
-  },
-  toggleLabel: {
-    flexShrink: 1,
   },
   upcoming: {
     gap: Spacing.two,

@@ -14,7 +14,7 @@ import { useSession } from '@/lib/session';
 
 export default function ChildProfileScreen() {
   const theme = useTheme();
-  const { profile, family, session, signOut, leaveFamily, setListenIn } = useSession();
+  const { profile, family, session, signOut, leaveFamily, setPreference } = useSession();
   const [permission, setPermission] = useState<Location.PermissionStatus | null>(null);
 
   useEffect(() => {
@@ -35,8 +35,11 @@ export default function ChildProfileScreen() {
 
   const granted = permission === Location.PermissionStatus.GRANTED;
 
-  async function toggleListenIn(next: boolean) {
-    const { error } = await setListenIn(next);
+  async function togglePreference(
+    key: 'audioAlertsEnabled' | 'locationSharing',
+    next: boolean
+  ) {
+    const { error } = await setPreference(key, next);
     if (error) Alert.alert('Could not save that', error);
   }
 
@@ -66,27 +69,41 @@ export default function ChildProfileScreen() {
         </View>
       </Card>
 
-      <Card title="Let a parent listen in">
+      <Card title="Audio distraction alerts">
         <View style={styles.toggleRow}>
           <ThemedText type="small" style={styles.toggleLabel}>
-            {profile?.listenInEnabled ? 'Your parent can listen' : 'Your parent cannot listen'}
+            Listen for a loud cabin
           </ThemedText>
           <Switch
-            value={profile?.listenInEnabled ?? false}
-            onValueChange={(next) => void toggleListenIn(next)}
+            value={profile?.audioAlertsEnabled ?? false}
+            onValueChange={(next) => void togglePreference('audioAlertsEnabled', next)}
             trackColor={{ true: theme.tint, false: theme.border }}
           />
         </View>
 
         <ThemedText type="small" themeColor="textSecondary">
-          Off unless you turn it on, and only you can change it. When it is on, a parent in your
-          family can open the audio in your car while you are on a drive. Anyone riding with you can
-          be heard too, so only switch this on if they would be fine with that.
+          While you are driving, DriveSafe measures how loud it is using the microphone. If it stays
+          loud you get a warning on screen and your family is told. Nothing is recorded, saved, or
+          uploaded — only the loudness reading ever leaves your phone.
         </ThemedText>
+      </Card>
+
+      <Card title="Location sharing">
+        <View style={styles.toggleRow}>
+          <ThemedText type="small" style={styles.toggleLabel}>
+            Share my location
+          </ThemedText>
+          <Switch
+            value={profile?.locationSharing ?? false}
+            onValueChange={(next) => void togglePreference('locationSharing', next)}
+            trackColor={{ true: theme.tint, false: theme.border }}
+          />
+        </View>
 
         <ThemedText type="small" themeColor="textSecondary">
-          Not built yet — this saves your answer so nothing can start listening before you have
-          said yes. You will see a clear indicator on this screen whenever the microphone is open.
+          Puts you on the family map and lets a parent follow a drive you are on. Only your most
+          recent position is kept — DriveSafe never builds a history of where you have been outside
+          the drives you record.
         </ThemedText>
       </Card>
 
