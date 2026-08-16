@@ -137,7 +137,7 @@ Deferred deliberately — see "Known constraints".
 
 ### Phase 6 — Dashcam
 
-- `expo-camera` with a rolling in-memory buffer, keeping the trailing 60 seconds
+- `expo-camera` with a rolling segment buffer, keeping the trailing 15 seconds
   and discarding the rest.
 - On a hard-braking event or a voice trigger, flush the buffer to a clip.
 - Voice trigger ("DriveSafe, save that") via on-device keyword spotting.
