@@ -77,11 +77,12 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
   3,600 rows to `drive_audio_levels`. The graph downsamples to 60 bars anyway, so
   bucketing on the phone before upload — a peak every five seconds, say — would
   cut this by 5× with no visible difference.
-- [ ] **The parent's noise graph lags the car by roughly 2–3 seconds.** Realtime
-  delivery is under a second; what remains is the driver's 2 s flush interval,
-  which batches readings to keep this at one insert every two seconds rather
-  than one a second. Drop `AUDIO_FLUSH_MS` if that second ever matters more than
-  the request volume.
+- [ ] **Confirm realtime is actually connected.** The parent's live views are
+  built to work on polling alone, so a broken realtime subscription degrades
+  quietly rather than visibly — the graph just moves in 1.5 s steps instead of
+  continuously. `useLiveAudioLevels` warns to the console on `CHANNEL_ERROR`.
+  The usual cause is a project that has not re-run `supabase/schema.sql` since
+  `drive_audio_levels` was added to the `supabase_realtime` publication.
 - [ ] **Push tokens are never cleaned up.** A parent who reinstalls leaves a dead
   token behind. Expo's push receipts report `DeviceNotRegistered`; we do not
   read receipts at all yet.

@@ -18,6 +18,7 @@ import { publishLocation } from '@/lib/locations';
 import { registerForPushNotifications } from '@/lib/notifications';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/use-async';
+import { useDriveActivity } from '@/lib/use-drive-activity';
 import { useFamilyAlerts } from '@/lib/use-family-alerts';
 import type { LinkedDriver } from '@/types/drive';
 
@@ -29,7 +30,12 @@ const FALLBACK_REGION: Region = {
   longitudeDelta: 0.2,
 };
 
-const REFRESH_INTERVAL_MS = 15_000;
+/**
+ * Backstop only — `useDriveActivity` is what actually makes a drive appear
+ * promptly. Kept short enough that a parent whose realtime connection is down
+ * still sees a drive start within a few seconds rather than a quarter-minute.
+ */
+const REFRESH_INTERVAL_MS = 5_000;
 
 export default function ParentLiveScreen() {
   const theme = useTheme();
@@ -103,6 +109,13 @@ export default function ParentLiveScreen() {
   // Loud-audio alerts arrive here over realtime, so a parent sitting on this
   // tab sees them without waiting for the next poll.
   const { alert, dismiss } = useFamilyAlerts({ enabled: Boolean(family) });
+
+  // A drive starting is what a parent is waiting for; it should not sit behind
+  // the refresh interval.
+  useDriveActivity({
+    enabled: Boolean(family),
+    onChange: () => void drivers.reload(),
+  });
 
   // A new alert means something is happening right now; pull the driver list so
   // the row underneath flips to "Driving now" in the same beat.
