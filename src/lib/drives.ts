@@ -263,7 +263,11 @@ export async function listFamilyDrivers(familyId: string): Promise<LinkedDriver[
       'driver_id',
       children.map((child) => child.id)
     )
-    .order('started_at', { ascending: false });
+    .order('started_at', { ascending: false })
+    // The Live tab needs the drive in progress and enough history for a rolling
+    // average, not every drive ever taken. This screen polls, so an unbounded
+    // query here would get heavier every week the family used the app.
+    .limit(200);
 
   const drives = (driveRows ?? []) as {
     id: string;
@@ -392,15 +396,27 @@ export async function appendAudioLevels(
   );
 }
 
-/** Every loudness reading for a drive, oldest first. */
-export async function listAudioLevels(driveId: string): Promise<AudioLevel[]> {
+/**
+ * Loudness readings for a drive, oldest first.
+ *
+ * `since` fetches only what is newer, which is what makes polling every second
+ * or two affordable: without it every tick re-downloads the whole drive, and the
+ * query gets slower exactly as the drive gets longer.
+ */
+export async function listAudioLevels(
+  driveId: string,
+  since?: number
+): Promise<AudioLevel[]> {
   const supabase = requireSupabase();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('drive_audio_levels')
     .select('recorded_at, level')
-    .eq('drive_id', driveId)
-    .order('recorded_at', { ascending: true });
+    .eq('drive_id', driveId);
+
+  if (since) query = query.gt('recorded_at', new Date(since).toISOString());
+
+  const { data, error } = await query.order('recorded_at', { ascending: true });
 
   if (error) throw new Error(error.message);
 

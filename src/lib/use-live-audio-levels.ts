@@ -1,21 +1,24 @@
 /**
  * Cabin loudness for a drive, kept current.
  *
- * Three sources, in order of how much work they do:
+ * Two sources, deliberately overlapping:
  *
- *   1. One read on mount, so a parent opening a drive late sees the part they
- *      missed rather than an empty graph.
- *   2. A realtime subscription, which carries every new reading within about a
- *      second of it being written. This is the one doing the work.
- *   3. A slow backstop poll, for the case the socket drops without telling us.
- *      Rare enough that a graph frozen until the next tick is acceptable, and
- *      cheap enough to leave running.
+ *   1. A realtime subscription, which delivers each reading within about a
+ *      second of it being written.
+ *   2. A short incremental poll, asking only for readings newer than the last
+ *      one held.
  *
- * Realtime here is `postgres_changes` on a table with row-level security, so a
- * subscriber only ever receives rows they could have selected. That is the
- * reason this is a table rather than a broadcast channel: broadcast is not
- * covered by RLS, and a family's drive data should not rely on a channel name
- * being hard to guess.
+ * The poll is not a fallback bolted on for safety — it is what guarantees the
+ * graph moves. Realtime on this table depends on `drive_audio_levels` being in
+ * the `supabase_realtime` publication, and a project that has not re-run
+ * `supabase/schema.sql` since that was added will silently receive nothing. A
+ * graph that stutters forward every twenty seconds is indistinguishable from a
+ * broken feature, so the poll is fast enough to carry the whole load alone and
+ * realtime simply makes it smoother.
+ *
+ * Asking only for what is new is what makes that affordable. Re-reading the
+ * whole series every second would get slower as the drive got longer, which is
+ * the opposite of what a live view needs.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -24,8 +27,8 @@ import { listAudioLevels } from '@/lib/drives';
 import { getSupabase } from '@/lib/supabase';
 import type { AudioLevel } from '@/types/drive';
 
-/** Only fires when realtime has gone quiet, so it can afford to be lazy. */
-const BACKSTOP_MS = 20_000;
+/** Fast enough to look continuous at two readings a second. */
+const POLL_MS = 1_500;
 
 type LevelRow = {
   recorded_at: string;
@@ -35,7 +38,7 @@ type LevelRow = {
 /**
  * Merges new readings into the series, dropping anything already held.
  *
- * Readings are keyed by their timestamp, which the recording phone stamps once
+ * Readings are keyed by their timestamp, which the recording phone stamps twice
  * a second — close enough to unique that a collision would need two readings in
  * the same millisecond, and harmless if one ever happened.
  */
@@ -60,16 +63,18 @@ export function useLiveAudioLevels({
 }): AudioLevel[] {
   const [levels, setLevels] = useState<AudioLevel[]>([]);
 
-  // Lets the backstop reconcile without re-arming on every new reading.
-  const levelsRef = useRef(levels);
-  levelsRef.current = levels;
+  // Newest timestamp held, so each poll asks only for what it does not have.
+  const latestAt = useRef(0);
 
   const pull = useCallback(async (id: string) => {
     try {
-      const rows = await listAudioLevels(id);
+      const rows = await listAudioLevels(id, latestAt.current || undefined);
+      if (rows.length === 0) return;
+
+      latestAt.current = Math.max(latestAt.current, rows[rows.length - 1].t);
       setLevels((current) => merge(current, rows));
     } catch {
-      // Keep whatever is already drawn; realtime or the next tick will catch up.
+      // Keep whatever is already drawn; the next tick tries again.
     }
   }, []);
 
@@ -77,6 +82,7 @@ export function useLiveAudioLevels({
   // next one's graph.
   useEffect(() => {
     setLevels([]);
+    latestAt.current = 0;
   }, [driveId]);
 
   useEffect(() => {
@@ -105,18 +111,24 @@ export function useLiveAudioLevels({
           const row = payload.new as LevelRow;
           if (typeof row?.level !== 'number') return;
 
-          setLevels((current) =>
-            merge(current, [{ t: new Date(row.recorded_at).getTime(), level: row.level }])
-          );
+          const sample = { t: new Date(row.recorded_at).getTime(), level: row.level };
+          latestAt.current = Math.max(latestAt.current, sample.t);
+          setLevels((current) => merge(current, [sample]));
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.warn(
+            'Realtime unavailable for drive_audio_levels — falling back to polling. Re-run supabase/schema.sql if this persists.'
+          );
+        }
+      });
 
-    const backstop = setInterval(() => void pull(driveId), BACKSTOP_MS);
+    const timer = setInterval(() => void pull(driveId), POLL_MS);
 
     return () => {
       cancelled = true;
-      clearInterval(backstop);
+      clearInterval(timer);
       void supabase.removeChannel(channel);
     };
   }, [driveId, enabled, pull]);
