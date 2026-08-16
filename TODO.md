@@ -132,6 +132,33 @@ heavier than anything currently stored:
 - [ ] **Egress matters too.** 5 GB/month is roughly 350-900 clip views. Fine for
   a family; not fine if a demo video autoplays clips to every visitor.
 
+## Dashcam — what is built and what is not
+
+Built: a rolling recorder that keeps the trailing minute in fifteen-second
+segments, manual "Save that", automatic saving on a loud-audio flag, upload to a
+private Supabase bucket, and playback on the drive detail screen.
+
+- [!] **Needs a development build.** `expo-camera` video recording does not work
+  in Expo Go. `npx expo run:ios` or `eas build --profile development`. Nothing
+  about the dashcam can be tested from a QR code.
+- [ ] **There is a gap of a few hundred milliseconds between segments** while
+  the camera stops and restarts. Closing it needs native code; a saved clip has
+  a small stutter at each seam.
+- [ ] **Clips are several files, not one.** Nothing available to an Expo app can
+  concatenate video. The player advances through the parts, which is honest but
+  not seamless. `ffmpeg-kit` is retired; a server-side stitch would need a
+  function and more storage, not less.
+- [ ] **No retention policy.** See the free-tier section: one saved clip a day
+  fills the free storage tier within months, and nothing deletes anything.
+- [ ] **Deleting a drive leaves its files behind.** The database cascade drops
+  `drive_clips` rows, but storage objects are not touched by it, so they linger
+  and still count against the quota. `deleteClip` handles this for a single
+  clip; account and drive deletion do not.
+- [ ] **Battery and heat.** Camera plus GPS plus microphone plus a screen that
+  never sleeps is the heaviest thing the app can do. Test on a real drive before
+  assuming a phone survives an hour of it.
+- [ ] Voice trigger ("DriveSafe, save that") from the roadmap is not built.
+
 ## Nice to have
 
 - [ ] Rolling-buffer dashcam and the `"DriveSafe, save that"` voice trigger —

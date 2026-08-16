@@ -14,8 +14,34 @@ export type Profile = {
   familyId: string | null;
   /** Whether audio distraction alerts run during this driver's drives. */
   audioAlertsEnabled: boolean;
+  /** Whether the dashcam records while this driver is on a drive. */
+  dashcamEnabled: boolean;
   /** Whether this person broadcasts their position to the family. */
   locationSharing: boolean;
+};
+
+/** Why a dashcam clip was kept instead of being overwritten. */
+export type DriveClipReason = 'manual' | 'loud_audio';
+
+/**
+ * One saved stretch of dashcam footage.
+ *
+ * Several files rather than one: the camera records fixed-length segments, and
+ * nothing in an Expo app can join them, so the player runs the parts in order.
+ */
+export type DriveClip = {
+  id: string;
+  reason: DriveClipReason;
+  /** Unix epoch milliseconds at the start of the earliest part. */
+  recordedAt: number;
+  durationSeconds: number;
+  parts: {
+    index: number;
+    /** Short-lived signed URL, or null when the file could not be signed. */
+    url: string | null;
+    durationSeconds: number;
+    bytes: number;
+  }[];
 };
 
 /** One cabin-loudness reading taken during a drive. */

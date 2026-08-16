@@ -50,10 +50,19 @@ export const PrivacyPolicySections: PrivacySection[] = [
     ],
   },
   {
+    title: 'Dashcam',
+    paragraphs: [
+      'This feature is off by default and only a driver can turn it on, from their profile.',
+      'While it is on and a drive is recording, the camera records continuously in short segments and keeps only the last minute. Everything older is deleted on the phone and is never sent anywhere. Footage leaves the phone only when a clip is deliberately kept — either because the driver tapped Save that, or because DriveSafe flagged the car as loud.',
+      'Saved clips are video only. They have no sound, because the microphone is used to measure loudness and nothing else. Clips are stored privately and are visible to your family, nobody else. Deleting the drive or your account deletes them.',
+    ],
+  },
+  {
     title: 'What DriveSafe does not collect',
     paragraphs: [
-      'DriveSafe does not use your camera, contacts, or photos, and does not collect advertising identifiers. It contains no third-party analytics, advertising, or tracking software.',
-      'It never records, keeps, or transmits audio. The microphone is read only as a loudness meter, only during a drive, and only when the driver has switched audio alerts on.',
+      'DriveSafe does not use your contacts or photos, and does not collect advertising identifiers. It contains no third-party analytics, advertising, or tracking software.',
+      'It never records, keeps, or transmits audio — not from the microphone, and not on dashcam clips. The microphone is read only as a loudness meter, only during a drive, and only when the driver has switched audio alerts on.',
+      'The camera is used only when the driver has switched the dashcam on, and only while a drive is recording.',
     ],
   },
   {
