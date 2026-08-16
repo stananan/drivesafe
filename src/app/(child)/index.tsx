@@ -32,11 +32,18 @@ import { useDriveTracker } from '@/lib/use-drive-tracker';
 const HEARTBEAT_MS = 10_000;
 
 /**
- * Loudness goes up far more often than the heartbeat. It is a handful of small
- * rows, and it is the one thing on the parent's screen that visibly lags when
- * it waits — a noise graph that updates every ten seconds reads as broken.
+ * Loudness goes up far more often than the heartbeat. It is a handful of tiny
+ * rows, and it is the one thing on the parent's screen that visibly lags when it
+ * waits — a noise graph that arrives in clumps reads as broken.
  */
-const AUDIO_FLUSH_MS = 2_000;
+const AUDIO_FLUSH_MS = 1_000;
+
+/**
+ * How often a reading is kept for upload. The monitor samples faster still, but
+ * two a second is the point where the parent's graph stops looking stepped and
+ * starts looking live.
+ */
+const AUDIO_SAMPLE_MS = 500;
 
 /** The on-screen loud-noise warning clears itself rather than needing a tap. */
 const ALERT_VISIBLE_MS = 12_000;
@@ -104,14 +111,12 @@ export default function DriveScreen() {
 
   const audio = useAudioMonitor({ enabled: isRecording && audioEnabled, onLoud: handleLoud });
 
-  // Buffer one reading a second. The monitor samples faster than that, which is
-  // right for catching a spike but far more resolution than a graph needs.
   const lastBufferedAt = useRef(0);
   useEffect(() => {
     if (audio.level === null) return;
 
     const now = Date.now();
-    if (now - lastBufferedAt.current < 1_000) return;
+    if (now - lastBufferedAt.current < AUDIO_SAMPLE_MS) return;
 
     lastBufferedAt.current = now;
     pendingLevels.current.push({ t: now, level: audio.level });
