@@ -39,13 +39,13 @@ This feature is off by default and only a driver can turn it on, from their prof
 
 While it is on and a drive is recording, the camera records continuously in short segments and keeps only the last fifteen seconds. Everything older is deleted on the phone and is never sent anywhere. Footage leaves the phone only when a clip is deliberately kept — either because the driver tapped Save that, or because DriveSafe flagged the car as loud.
 
-Saved clips are video only. They have no sound, because the microphone is used to measure loudness and nothing else. Clips are stored privately and are visible to your family, nobody else. Deleting the drive or your account deletes them.
+Saved clips include sound, as a dashcam normally would — which means anyone riding in the car can be heard on a clip the driver keeps. Clips are stored privately and are visible to your family and nobody else. Deleting the drive or your account deletes them.
 
 ## What DriveSafe does not collect
 
 DriveSafe does not use your contacts or photos, and does not collect advertising identifiers. It contains no third-party analytics, advertising, or tracking software.
 
-It never records, keeps, or transmits audio — not from the microphone, and not on dashcam clips. The microphone is read only as a loudness meter, only during a drive, and only when the driver has switched audio alerts on.
+Outside a saved dashcam clip, audio is never kept. The loudness meter reads the microphone during a drive and writes nothing down; the temporary file it needs is deleted as soon as monitoring stops.
 
 The camera is used only when the driver has switched the dashcam on, and only while a drive is recording.
 

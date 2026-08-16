@@ -35,6 +35,8 @@ export type DriveClip = {
   /** Unix epoch milliseconds at the start of the earliest part. */
   recordedAt: number;
   durationSeconds: number;
+  /** False when the phone refused to record sound alongside loudness monitoring. */
+  hasAudio: boolean;
   parts: {
     index: number;
     /** Short-lived signed URL, or null when the file could not be signed. */
@@ -42,6 +44,14 @@ export type DriveClip = {
     durationSeconds: number;
     bytes: number;
   }[];
+};
+
+/** A clip as the Clips tab sees it: with the drive and driver it belongs to. */
+export type FamilyClip = DriveClip & {
+  driveId: string;
+  driverName: string;
+  /** Unix epoch milliseconds the drive began. */
+  driveStartedAt: number;
 };
 
 /** One cabin-loudness reading taken during a drive. */

@@ -33,6 +33,11 @@ export default function ParentLayout() {
         />
       </NativeTabs.Trigger>
 
+      <NativeTabs.Trigger name="clips">
+        <Label>Clips</Label>
+        <Icon sf="film.fill" androidSrc={<VectorIcon family={MaterialIcons} name="movie" />} />
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="settings">
         <Label>Settings</Label>
         <Icon

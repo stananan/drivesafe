@@ -152,6 +152,13 @@ private Supabase bucket, and playback on the drive detail screen.
 - [ ] **The iOS Simulator has no camera.** If a development build does become
   necessary, it has to go on a physical phone; a simulator build runs everything
   except the feature being tested.
+- [ ] **Settle whether one phone will record clip audio while the loudness
+  monitor runs.** Both want the microphone, and iOS may refuse. The app tries
+  with sound and falls back to video only for the rest of the drive if a
+  recording fails, surfacing a note on the dashcam card and setting
+  `has_audio` false on clips saved after that point. A single real drive
+  answers it: if the note never appears, both work and the fallback is dead
+  code worth keeping anyway.
 - [ ] **There is a gap of a few hundred milliseconds between segments** while
   the camera stops and restarts. Closing it needs native code; a saved clip has
   a small stutter at each seam.

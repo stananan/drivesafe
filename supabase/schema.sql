@@ -174,9 +174,10 @@ create index if not exists drive_audio_levels_drive_idx
 
 -- Dashcam clips.
 --
--- A clip is video only. The microphone belongs to the loudness monitor, and
--- recording the cabin would break the promise the rest of the app makes, so
--- `mute` is set on the camera and no clip has ever had a soundtrack.
+-- Clips carry sound, like any other dashcam. `has_audio` records whether a
+-- particular clip actually got it: the camera and the loudness monitor both
+-- want the microphone, and where a phone refuses to give it to both the app
+-- falls back to video only rather than losing the dashcam entirely.
 create table if not exists public.drive_clips (
   id               uuid primary key default gen_random_uuid(),
   drive_id         uuid not null references public.drives (id) on delete cascade,
@@ -185,6 +186,8 @@ create table if not exists public.drive_clips (
   -- Start of the earliest part.
   recorded_at      timestamptz not null,
   duration_seconds double precision not null default 0,
+  -- False when the phone would not record sound alongside loudness monitoring.
+  has_audio        boolean not null default true,
   created_at       timestamptz not null default now()
 );
 
