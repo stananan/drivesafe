@@ -301,7 +301,12 @@ function FamilyCodeOnboarding({ code, onCopy }: { code: string; onCopy: () => vo
       </ThemedText>
 
       <View style={[styles.codeBox, { borderColor: theme.tint, backgroundColor: theme.backgroundElement }]}>
-        <ThemedText style={[styles.code, { color: theme.tint }]}>{code || '——————'}</ThemedText>
+        <ThemedText
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          style={[styles.code, { color: theme.tint }]}>
+          {code || '——————'}
+        </ThemedText>
       </View>
 
       <Button label="Copy code" variant="secondary" onPress={onCopy} />
@@ -477,14 +482,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.medium,
     paddingVertical: Spacing.three,
+    // Without this the code runs to the very edge on a narrow phone and the
+    // last character is clipped by the border radius.
+    paddingHorizontal: Spacing.three,
     alignItems: 'center',
   },
   code: {
     fontSize: 34,
     fontWeight: '700',
-    letterSpacing: 8,
+    letterSpacing: 6,
     // letterSpacing adds a trailing gap after the last character, which pushes
     // centred text visibly left. Pull it back by the same amount.
-    marginLeft: 8,
+    marginLeft: 6,
   },
 });

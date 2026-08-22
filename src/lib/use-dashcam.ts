@@ -26,24 +26,29 @@ import { File } from 'expo-file-system';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /** How far back a saved clip reaches. */
-export const CLIP_SECONDS = 15;
+export const CLIP_SECONDS = 20;
 
 /**
- * Segment length, and the granularity of everything above.
+ * Segment length, which is also how many files a clip ends up being.
  *
- * A clip can only start on a segment boundary, so short segments mean a saved
- * clip lands closer to the fifteen seconds actually asked for. They also mean
- * more seams: the player has to hand off between parts, and every handoff is a
- * visible stutter. Five seconds is the compromise — a clip overshoots by at
- * most a few seconds, and carries three or four seams rather than a dozen.
+ * Nothing in an Expo app can join video files, so the only way to make a saved
+ * clip feel like one recording is to record it as one to begin with. Matching
+ * the segment length to the clip length does that: a save takes the segment in
+ * progress and, when it is short, the one before it — one or two files rather
+ * than the four that five-second segments produced.
+ *
+ * The cost is granularity. A clip can only begin on a segment boundary, so it
+ * may reach further back than twenty seconds. Overshooting is the harmless
+ * direction: extra footage before the moment is context, whereas a clip that
+ * stops short has missed the thing worth keeping.
  */
-const SEGMENT_SECONDS = 5;
+const SEGMENT_SECONDS = 20;
 
 /**
- * Enough segments to cover the window with one spare, since the segment being
- * recorded right now is not yet a file and cannot be counted on.
+ * Two: the segment in progress, plus the last complete one to fall back on when
+ * a save lands moments after a boundary.
  */
-const RING_SIZE = Math.ceil(CLIP_SECONDS / SEGMENT_SECONDS) + 1;
+const RING_SIZE = 2;
 
 export type DashcamStatus = 'idle' | 'starting' | 'recording' | 'error';
 
@@ -153,7 +158,7 @@ export function useDashcam({
     }
 
     // Walk back from the newest segment until the window is covered, so a clip
-    // is the last fifteen seconds rather than everything still on disk.
+    // is the last twenty seconds rather than everything still on disk.
     const trailing: DashcamSegment[] = [];
     let covered = 0;
 

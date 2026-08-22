@@ -62,7 +62,10 @@ export default function ParentSettingsScreen() {
     <Screen title="Settings" subtitle="Your family code, drivers, and alerts.">
       <Card title="Family code" meta={family?.name ?? ''}>
         <View style={styles.codeRow}>
-          <ThemedText style={[styles.code, { color: theme.tint }]}>
+          <ThemedText
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            style={[styles.code, { color: theme.tint }]}>
             {family?.code ?? '——————'}
           </ThemedText>
           <Button label="Copy" variant="secondary" onPress={() => void copyCode()} />
@@ -177,6 +180,9 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   code: {
+    // Shares the row with the Copy button, so it has to be allowed to shrink
+    // rather than push the button off the edge and lose its own last letters.
+    flexShrink: 1,
     fontSize: 28,
     fontWeight: '700',
     letterSpacing: 4,

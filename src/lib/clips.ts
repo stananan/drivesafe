@@ -118,6 +118,7 @@ type ClipRow = {
   recorded_at: string;
   duration_seconds: number;
   has_audio: boolean;
+  title: string | null;
 };
 
 type PartRow = {
@@ -171,6 +172,7 @@ async function withParts(clips: ClipRow[]): Promise<DriveClip[]> {
     recordedAt: new Date(clip.recorded_at).getTime(),
     durationSeconds: clip.duration_seconds,
     hasAudio: clip.has_audio,
+    title: clip.title,
     parts: parts
       .filter((part) => part.clip_id === clip.id)
       .map((part) => ({
@@ -190,7 +192,7 @@ export async function listClips(driveId: string): Promise<DriveClip[]> {
 
   const { data, error } = await supabase
     .from('drive_clips')
-    .select('id, reason, recorded_at, duration_seconds, has_audio')
+    .select('id, reason, recorded_at, duration_seconds, has_audio, title')
     .eq('drive_id', driveId)
     .order('recorded_at', { ascending: false });
 
@@ -210,7 +212,7 @@ export async function listRecentClips(limit = 60): Promise<FamilyClip[]> {
 
   const { data, error } = await supabase
     .from('drive_clips')
-    .select('id, drive_id, reason, recorded_at, duration_seconds, has_audio')
+    .select('id, drive_id, reason, recorded_at, duration_seconds, has_audio, title')
     .order('recorded_at', { ascending: false })
     .limit(limit);
 
@@ -248,6 +250,26 @@ export async function listRecentClips(limit = 60): Promise<FamilyClip[]> {
       driveStartedAt: drive ? new Date(drive.started_at).getTime() : clip.recordedAt,
     };
   });
+}
+
+/**
+ * Renames a clip, or clears the name when given nothing.
+ *
+ * Only the title is writable — the schema grants that one column — so this
+ * cannot be used to rewrite when a clip happened or claim a clip DriveSafe kept
+ * automatically was saved on purpose.
+ */
+export async function renameClip(clipId: string, title: string): Promise<void> {
+  const supabase = requireSupabase();
+
+  const trimmed = title.trim();
+
+  const { error } = await supabase
+    .from('drive_clips')
+    .update({ title: trimmed.length > 0 ? trimmed.slice(0, 80) : null })
+    .eq('id', clipId);
+
+  if (error) throw new Error(error.message);
 }
 
 /**
