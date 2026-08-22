@@ -439,9 +439,34 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  caller_role   public.user_role;
+  caller_family uuid;
 begin
   if auth.uid() is null then
     raise exception 'not_authenticated';
+  end if;
+
+  select role, family_id into caller_role, caller_family
+  from public.profiles
+  where id = auth.uid();
+
+  -- A family with no parent left in it cannot be run: nobody can share the code
+  -- or see a drive, and the drivers still in it would be broadcasting their
+  -- location to an empty room. So the last parent to leave takes the family
+  -- with them.
+  --
+  -- Relying on the cascade from families.created_by would only cover the parent
+  -- who happened to create it, which is not the same question.
+  if caller_role = 'parent' and caller_family is not null then
+    if not exists (
+      select 1 from public.profiles
+      where family_id = caller_family
+        and role = 'parent'
+        and id <> auth.uid()
+    ) then
+      delete from public.families where id = caller_family;
+    end if;
   end if;
 
   delete from auth.users where id = auth.uid();
