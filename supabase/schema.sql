@@ -96,8 +96,10 @@ alter table public.profiles drop column if exists listen_in_enabled;
 create table if not exists public.drives (
   id              uuid primary key default gen_random_uuid(),
   driver_id       uuid not null references public.profiles (id) on delete cascade,
-  -- Denormalized so a drive stays attached to its family even if the driver
-  -- later leaves, and so parents can filter without joining through profiles.
+  -- Denormalized so parents can filter without joining through profiles, and so
+  -- leave_family() can revoke a family's access to a driver's whole history by
+  -- clearing one column. Null means no family can see this drive — only the
+  -- driver who recorded it.
   family_id       uuid references public.families (id) on delete set null,
   started_at      timestamptz not null,
   -- Null while the drive is in progress; this is how "currently driving" is derived.
@@ -417,6 +419,20 @@ begin
   if auth.uid() is null then
     raise exception 'not_authenticated';
   end if;
+
+  -- Leaving takes your history with you. A parent should not keep a driver's
+  -- routes, scores and dashcam footage after that driver has left the family.
+  --
+  -- Detaching the drives is enough to do all of it at once: every parent-facing
+  -- read — the drive list, its events, its audio levels, its clips, and the
+  -- storage policies guarding the clip files themselves — decides access by
+  -- resolving this column, so clearing it closes all of them together.
+  --
+  -- Detached rather than deleted. These are still the driver's own drives and
+  -- they go on seeing them; it is the family's claim on them that ends. Nothing
+  -- is restored by rejoining later, which is the honest outcome: the family did
+  -- not have this history while the driver was gone.
+  update public.drives set family_id = null where driver_id = auth.uid();
 
   update public.profiles set family_id = null where id = auth.uid();
 end $$;
