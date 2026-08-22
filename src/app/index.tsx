@@ -2,6 +2,7 @@ import { Redirect } from 'expo-router';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { Button } from '@/components/ui/button';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/lib/session';
@@ -12,7 +13,7 @@ import { useSession } from '@/lib/session';
  */
 export default function IndexGate() {
   const theme = useTheme();
-  const { isLoading, session, profile, configError } = useSession();
+  const { isLoading, session, profile, configError, profileError, signOut } = useSession();
 
   if (configError) {
     return (
@@ -36,6 +37,29 @@ export default function IndexGate() {
   }
 
   if (!session) return <Redirect href="/(auth)/sign-in" />;
+
+  // Signed in and the profile could not be read. An account whose row is simply
+  // gone signs itself out in the session provider, so reaching here means the
+  // read failed rather than came back empty — most often a database that has
+  // not run the current schema.sql. Waiting will not fix that, and a spinner
+  // with no way out is the worst possible way to say so.
+  if (!profile && profileError) {
+    return (
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
+        <View style={styles.message}>
+          <ThemedText type="smallBold">Could not load your account</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {profileError}
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            If this project&apos;s database was changed recently, re-run
+            supabase/schema.sql. Signing out will get you back to the start.
+          </ThemedText>
+          <Button label="Sign out" variant="secondary" onPress={() => void signOut()} />
+        </View>
+      </View>
+    );
+  }
 
   // Signed in, but the profile row has not arrived yet. The auth trigger creates
   // it, so this is a brief network state rather than a broken account.
