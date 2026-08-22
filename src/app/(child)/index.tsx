@@ -1,6 +1,6 @@
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Alert, AppState, StyleSheet, View } from 'react-native';
 
 import { AudioLevelGraph } from '@/components/audio-level-graph';
 import { RoutePreview } from '@/components/route-preview';
@@ -14,6 +14,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { saveClip } from '@/lib/clips';
 import {
   appendAudioLevels,
+  closeAbandonedDrives,
   finishDrive,
   heartbeatDrive,
   logDriveEvent,
@@ -168,6 +169,10 @@ export default function DriveScreen() {
   const keepClipRef = useRef(keepClip);
   keepClipRef.current = keepClip;
 
+  // Same trick for the app-state listener below, which must not re-arm on every
+  // GPS fix but does need the current closure when it fires.
+  const stopRef = useRef<(options?: { silent?: boolean }) => Promise<void>>(async () => {});
+
   const handleLoud = useCallback((level: number) => {
     const at = Date.now();
     const { tracker: current, driveId: id, profile: who } = latest.current;
@@ -216,6 +221,33 @@ export default function DriveScreen() {
     lastBufferedAt.current = now;
     pendingLevels.current.push({ t: now, level: audio.level });
   }, [audio.level]);
+
+  // Recording only survives while this screen is on top, so a backgrounded app
+  // is a drive that has already stopped collecting anything. Ending it here is
+  // what stops the family seeing a phantom drive that never finishes.
+  useEffect(() => {
+    if (!isRecording) return;
+
+    const subscription = AppState.addEventListener('change', (next) => {
+      // 'inactive' fires for a glance at the app switcher or a notification
+      // pulled down, which should not end a drive. Only a real background does.
+      if (next === 'background') void stopRef.current({ silent: true });
+    });
+
+    return () => subscription.remove();
+  }, [isRecording]);
+
+  // Close anything a previous session left open — a crash, a dead battery, or
+  // a phone put away mid-drive. Without this the driver stays "driving now" on
+  // their family's map indefinitely, and there is no way back from it in-app.
+  useEffect(() => {
+    if (!profile || isRecording) return;
+
+    void closeAbandonedDrives(profile.id).catch(() => {
+      // Best effort. A drive left open is a display problem, not a reason to
+      // block the screen a driver came here to use.
+    });
+  }, [profile, isRecording]);
 
   // Clear the warning on its own so a driver never has to interact with it.
   useEffect(() => {
@@ -313,7 +345,9 @@ export default function DriveScreen() {
     }
   }
 
-  async function handleStop() {
+  stopRef.current = handleStop;
+
+  async function handleStop({ silent = false }: { silent?: boolean } = {}) {
     const summary = tracker.stop();
     if (!summary || !profile) return;
 
@@ -344,14 +378,24 @@ export default function DriveScreen() {
         loudAudioAlerts: loudCount.current,
       });
 
-      setLastDriveSummary(`${miles} mi in ${duration} · saved`);
-      Alert.alert('Drive saved', `${miles} mi in ${duration}. Your family can see it now.`);
+      setLastDriveSummary(
+        silent
+          ? `${miles} mi in ${duration} · ended when you left the app`
+          : `${miles} mi in ${duration} · saved`
+      );
+
+      if (!silent) {
+        Alert.alert('Drive saved', `${miles} mi in ${duration}. Your family can see it now.`);
+      }
     } catch (error) {
       setLastDriveSummary(`${miles} mi in ${duration} · not saved`);
-      Alert.alert(
-        'Could not save drive',
-        error instanceof Error ? error.message : 'Check your connection and try again.'
-      );
+
+      if (!silent) {
+        Alert.alert(
+          'Could not save drive',
+          error instanceof Error ? error.message : 'Check your connection and try again.'
+        );
+      }
     } finally {
       setDriveId(null);
       setLoudAlert(null);
