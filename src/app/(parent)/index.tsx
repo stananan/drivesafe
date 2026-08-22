@@ -489,6 +489,10 @@ const styles = StyleSheet.create({
   },
   code: {
     fontSize: 34,
+    // ThemedText's default style sets lineHeight 24. Raising fontSize without
+    // raising this leaves 34px glyphs rendering inside a 24px line box, which
+    // slices the top and bottom off every character.
+    lineHeight: 42,
     fontWeight: '700',
     letterSpacing: 6,
     // letterSpacing adds a trailing gap after the last character, which pushes

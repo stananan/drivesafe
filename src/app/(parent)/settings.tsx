@@ -187,6 +187,9 @@ const styles = StyleSheet.create({
   },
   code: {
     fontSize: 30,
+    // Must rise with fontSize: ThemedText's default lineHeight of 24 would clip
+    // these glyphs top and bottom.
+    lineHeight: 38,
     fontWeight: '700',
     letterSpacing: 6,
     // letterSpacing adds a trailing gap after the last character, which pushes
