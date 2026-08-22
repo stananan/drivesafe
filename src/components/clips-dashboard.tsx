@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { ClipPlayer } from '@/components/clip-player';
 import { ThemedText } from '@/components/themed-text';
@@ -11,7 +11,7 @@ import { Screen } from '@/components/ui/screen';
 import { Stat, StatRow } from '@/components/ui/stat';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { listRecentClips } from '@/lib/clips';
+import { deleteClip, listRecentClips, renameClip } from '@/lib/clips';
 import { formatWhen } from '@/lib/format';
 import { useAsync } from '@/lib/use-async';
 import type { FamilyClip } from '@/types/drive';
@@ -96,6 +96,7 @@ export function ClipsDashboard({ role }: { role: 'parent' | 'child' }) {
           onOpenDrive={() =>
             router.push({ pathname: '/drive/[id]', params: { id: clip.driveId } })
           }
+          onChanged={() => void clips.reload()}
           accent={clip.reason === 'loud_audio' ? theme.warning : theme.tint}
         />
       ))}
@@ -109,6 +110,7 @@ function ClipRow({
   isOpen,
   onToggle,
   onOpenDrive,
+  onChanged,
   accent,
 }: {
   clip: FamilyClip;
@@ -116,12 +118,66 @@ function ClipRow({
   isOpen: boolean;
   onToggle: () => void;
   onOpenDrive: () => void;
+  onChanged: () => void;
   accent: string;
 }) {
   const theme = useTheme();
 
+  const [draftTitle, setDraftTitle] = useState<string | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
+
   const megabytes =
     clip.parts.reduce((sum, part) => sum + part.bytes, 0) / (1024 * 1024);
+
+  const fallbackName =
+    clip.reason === 'loud_audio' ? 'Kept automatically — loud' : 'Saved during the drive';
+
+  async function commitRename() {
+    if (draftTitle === null) return;
+
+    const next = draftTitle;
+    setDraftTitle(null);
+
+    if (next.trim() === (clip.title ?? '')) return;
+
+    setIsBusy(true);
+
+    try {
+      await renameClip(clip.id, next);
+      onChanged();
+    } catch (error) {
+      Alert.alert('Could not rename', error instanceof Error ? error.message : 'Try again.');
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  function confirmDelete() {
+    Alert.alert(
+      'Delete this clip?',
+      'The video is removed from your family and from storage. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setIsBusy(true);
+
+            void deleteClip({ id: clip.id, driveId: clip.driveId, parts: clip.parts })
+              .then(onChanged)
+              .catch((error: unknown) =>
+                Alert.alert(
+                  'Could not delete',
+                  error instanceof Error ? error.message : 'Try again.'
+                )
+              )
+              .finally(() => setIsBusy(false));
+          },
+        },
+      ]
+    );
+  }
 
 
   return (
@@ -134,12 +190,11 @@ function ClipRow({
         <View style={[styles.dot, { backgroundColor: accent }]} />
 
         <View style={styles.headerText}>
-          <ThemedText type="smallBold">
-            {clip.reason === 'loud_audio' ? 'Kept automatically — loud' : 'Saved during the drive'}
-          </ThemedText>
+          <ThemedText type="smallBold">{clip.title ?? fallbackName}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             {role === 'parent' ? `${clip.driverName} · ` : ''}
             {formatWhen(clip.recordedAt)}
+            {clip.title ? ` · ${fallbackName.toLowerCase()}` : ''}
           </ThemedText>
         </View>
 
@@ -155,6 +210,43 @@ function ClipRow({
         <Detail label="Size" value={`${megabytes.toFixed(1)} MB`} />
         <Detail label="Parts" value={`${clip.parts.length}`} />
         <Detail label="Sound" value={clip.hasAudio ? 'Included' : 'Video only'} />
+      </View>
+
+      {draftTitle !== null ? (
+        <TextInput
+          value={draftTitle}
+          onChangeText={setDraftTitle}
+          onBlur={() => void commitRename()}
+          onSubmitEditing={() => void commitRename()}
+          placeholder="Name this clip"
+          placeholderTextColor={theme.textSecondary}
+          autoFocus
+          returnKeyType="done"
+          maxLength={80}
+          style={[
+            styles.input,
+            { borderColor: theme.border, color: theme.text, backgroundColor: theme.background },
+          ]}
+        />
+      ) : null}
+
+      <View style={styles.actions}>
+        <Button
+          label={draftTitle !== null ? 'Save name' : 'Rename'}
+          variant="secondary"
+          disabled={isBusy}
+          onPress={() =>
+            draftTitle !== null ? void commitRename() : setDraftTitle(clip.title ?? '')
+          }
+          style={styles.action}
+        />
+        <Button
+          label="Delete"
+          variant="danger"
+          disabled={isBusy}
+          onPress={confirmDelete}
+          style={styles.action}
+        />
       </View>
 
       <Button label="Open the drive" variant="secondary" onPress={onOpenDrive} />
@@ -198,5 +290,19 @@ const styles = StyleSheet.create({
   detail: {
     gap: Spacing.half,
     minWidth: 64,
+  },
+  input: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.small,
+    paddingHorizontal: Spacing.three,
+    minHeight: 44,
+    fontSize: 16,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  action: {
+    flex: 1,
   },
 });

@@ -480,8 +480,8 @@ export default function DriveScreen() {
 
               <ThemedText type="small" themeColor="textSecondary">
                 {clipAudio
-                  ? 'Recording on a loop with sound, keeping only the last fifteen seconds. Tap below to keep what just happened.'
-                  : 'Recording on a loop, keeping only the last fifteen seconds. Tap below to keep what just happened.'}
+                  ? 'Recording on a loop with sound, keeping only the last twenty seconds. Tap below to keep what just happened.'
+                  : 'Recording on a loop, keeping only the last twenty seconds. Tap below to keep what just happened.'}
               </ThemedText>
 
               {clipAudioFailed ? (

@@ -167,10 +167,16 @@ private Supabase bucket, and playback on the drive detail screen.
 - [ ] **There is a gap of a few hundred milliseconds between segments** while
   the camera stops and restarts. Closing it needs native code; a saved clip has
   a small stutter at each seam.
-- [ ] **Clips are several files, not one.** Nothing available to an Expo app can
-  concatenate video. The player advances through the parts, which is honest but
-  not seamless. `ffmpeg-kit` is retired; a server-side stitch would need a
-  function and more storage, not less.
+- [ ] **A clip is one file, or two.** Segments now match the clip length, so a
+  save is usually a single twenty-second recording and only occasionally a pair
+  when it lands just after a boundary. That is as close to one file as this gets
+  without concatenation, which nothing available to an Expo app can do —
+  `ffmpeg-kit` is retired, and a server-side stitch would need a function and
+  more storage rather than less.
+- [ ] **Clips may reach further back than twenty seconds.** A clip can only
+  begin on a segment boundary, so a save moments after one starts pulls in the
+  previous segment too. Overshooting is the harmless direction; stopping short
+  would miss the moment.
 - [ ] **No retention policy.** See the free-tier section: one saved clip a day
   fills the free storage tier within months, and nothing deletes anything.
 - [ ] **Deleting a drive leaves its files behind.** The database cascade drops

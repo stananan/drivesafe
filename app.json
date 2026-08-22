@@ -62,7 +62,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "DriveSafe records a dashcam loop while you drive and keeps only the last fifteen seconds, so you can save what just happened.",
+          "cameraPermission": "DriveSafe records a dashcam loop while you drive and keeps only the last twenty seconds, so you can save what just happened.",
           "microphonePermission": "DriveSafe uses the microphone two ways: it measures how loud the car is so it can warn you when noise gets distracting, and it records sound on dashcam clips you choose to keep. Loudness readings are never stored as audio.",
           "recordAudioAndroid": true
         }

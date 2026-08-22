@@ -37,6 +37,8 @@ export type DriveClip = {
   durationSeconds: number;
   /** False when the phone refused to record sound alongside loudness monitoring. */
   hasAudio: boolean;
+  /** What the driver named it. Null means fall back to why it was kept. */
+  title: string | null;
   parts: {
     index: number;
     /** Short-lived signed URL, or null when the file could not be signed. */

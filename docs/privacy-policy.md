@@ -37,7 +37,7 @@ While alerts are on, DriveSafe also saves a loudness reading about once a second
 
 This feature is off by default and only a driver can turn it on, from their profile.
 
-While it is on and a drive is recording, the camera records continuously in short segments and keeps only the last fifteen seconds. Everything older is deleted on the phone and is never sent anywhere. Footage leaves the phone only when a clip is deliberately kept — either because the driver tapped Save that, or because DriveSafe flagged the car as loud.
+While it is on and a drive is recording, the camera records continuously in short segments and keeps only the last twenty seconds. Everything older is deleted on the phone and is never sent anywhere. Footage leaves the phone only when a clip is deliberately kept — either because the driver tapped Save that, or because DriveSafe flagged the car as loud.
 
 Saved clips include sound, as a dashcam normally would — which means anyone riding in the car can be heard on a clip the driver keeps. Clips are stored privately and are visible to your family and nobody else. Deleting the drive or your account deletes them.
 

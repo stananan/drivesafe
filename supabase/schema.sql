@@ -200,7 +200,10 @@ create table if not exists public.drive_clips (
 -- appear on any database that had run this file before.
 alter table public.drive_clips
   -- False when the phone would not record sound alongside loudness monitoring.
-  add column if not exists has_audio boolean not null default true;
+  add column if not exists has_audio boolean not null default true,
+  -- What the driver called this clip. Null means it is still shown by why it
+  -- was kept, which is a better default than "Clip 1".
+  add column if not exists title text;
 
 create index if not exists drive_clips_drive_idx
   on public.drive_clips (drive_id, recorded_at desc);
@@ -628,6 +631,22 @@ create policy "driver inserts own clips"
     )
   );
 
+drop policy if exists "driver renames own clips" on public.drive_clips;
+create policy "driver renames own clips"
+  on public.drive_clips for update
+  using (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id and d.driver_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id and d.driver_id = auth.uid()
+    )
+  );
+
 drop policy if exists "driver deletes own clips" on public.drive_clips;
 create policy "driver deletes own clips"
   on public.drive_clips for delete
@@ -700,8 +719,12 @@ grant select, insert
   on public.drive_points, public.drive_events, public.drive_audio_levels,
      public.drive_clip_parts
   to authenticated;
--- Clips are deletable so a driver can take back footage they did not mean to keep.
+-- Deletable so a driver can take back footage they did not mean to keep, and
+-- renameable so a clip can be called what it actually is. Only the title is
+-- writable: a blanket update would let a driver rewrite when a clip happened or
+-- claim it was saved deliberately when DriveSafe kept it for them.
 grant select, insert, delete on public.drive_clips to authenticated;
+grant update (title) on public.drive_clips to authenticated;
 grant select on public.families, public.profiles to authenticated;
 
 -- Column-level on purpose. A blanket UPDATE would let a child set their own
