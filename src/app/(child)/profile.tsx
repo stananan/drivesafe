@@ -46,7 +46,7 @@ export default function ChildProfileScreen() {
   function confirmLeave() {
     Alert.alert(
       'Leave this family?',
-      'Your drives stay saved, but your family will stop seeing new ones until you rejoin.',
+      'Your drives and clips stay yours, but your family loses access to all of them — not just new ones. Rejoining later does not give them back.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Leave', style: 'destructive', onPress: () => void leaveFamily() },

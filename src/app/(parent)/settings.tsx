@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { QueryState } from '@/components/ui/query-state';
 import { Screen } from '@/components/ui/screen';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { listFamilyDrivers } from '@/lib/drives';
 import { useSession } from '@/lib/session';
@@ -41,7 +41,7 @@ export default function ParentSettingsScreen() {
   function confirmLeave() {
     Alert.alert(
       'Leave this family?',
-      'You will stop seeing your drivers and their drives. The family and their accounts stay as they are, and you can create or join another afterwards.',
+      'You will stop seeing your drivers, their drives, and their clips. Their accounts and the family stay as they are, and you can create or join another afterwards.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Leave', style: 'destructive', onPress: () => void leaveFamily() },
@@ -61,15 +61,17 @@ export default function ParentSettingsScreen() {
   return (
     <Screen title="Settings" subtitle="Your family code, drivers, and alerts.">
       <Card title="Family code" meta={family?.name ?? ''}>
-        <View style={styles.codeRow}>
-          <ThemedText
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            style={[styles.code, { color: theme.tint }]}>
+        <View
+          style={[
+            styles.codeBox,
+            { borderColor: theme.tint, backgroundColor: theme.backgroundElement },
+          ]}>
+          <ThemedText numberOfLines={1} style={[styles.code, { color: theme.tint }]}>
             {family?.code ?? '——————'}
           </ThemedText>
-          <Button label="Copy" variant="secondary" onPress={() => void copyCode()} />
         </View>
+
+        <Button label="Copy code" variant="secondary" onPress={() => void copyCode()} />
         <ThemedText type="small" themeColor="textSecondary">
           Share this to add another driver. New parents get the big version on the Live tab until
           someone joins.
@@ -173,19 +175,23 @@ const styles = StyleSheet.create({
     minHeight: 32,
     gap: Spacing.two,
   },
-  codeRow: {
-    flexDirection: 'row',
+  // The code gets a row to itself. Sharing one with the Copy button left it
+  // competing for width on a narrow phone, and shrinking it to fit only traded
+  // a clipped code for an unreadably small one.
+  codeBox: {
+    borderWidth: 1,
+    borderRadius: Radius.medium,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.three,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.three,
   },
   code: {
-    // Shares the row with the Copy button, so it has to be allowed to shrink
-    // rather than push the button off the edge and lose its own last letters.
-    flexShrink: 1,
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '700',
-    letterSpacing: 4,
+    letterSpacing: 6,
+    // letterSpacing adds a trailing gap after the last character, which pushes
+    // centred text visibly left. Pull it back by the same amount.
+    marginLeft: 6,
   },
   footer: {
     textAlign: 'center',
