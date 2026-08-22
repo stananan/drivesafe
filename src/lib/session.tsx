@@ -23,6 +23,11 @@ type SessionValue = {
   family: Family | null;
   /** Set when the environment has no Supabase keys at all. */
   configError: string | null;
+  /**
+   * Set when the profile could not be read for a signed-in user. Distinct from
+   * "not loaded yet": something is wrong and waiting will not fix it.
+   */
+  profileError: string | null;
 
   signUp: (input: {
     email: string;
@@ -96,6 +101,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [family, setFamily] = useState<Family | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   const configError = isSupabaseConfigured
     ? null
@@ -125,12 +131,38 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     if (token !== loadToken.current) return;
 
-    if (error || !profileRow) {
+    if (error) {
+      // Offline, a policy change, a column the app expects and the database does
+      // not. The session stays — this may well resolve on its own — but the
+      // message is kept so the gate can say something instead of spinning.
       setProfile(null);
       setFamily(null);
+      setProfileError(error.message);
       return;
     }
 
+    if (!profileRow) {
+      // A session that outlived its account: the row is gone but the token on
+      // this phone is still signed and still valid. That happens when the
+      // account was deleted from another device, or when the whole project was
+      // wiped. The gate waits for a profile that will never arrive, so the app
+      // sits on a spinner with no way back to the sign-in screen.
+      //
+      // Clearing the stored token locally is the way out. There is no server
+      // session left to end.
+      setProfile(null);
+      setFamily(null);
+      setSession(null);
+      setProfileError(null);
+
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {
+        // Nothing more to try; the state above already frees the router.
+      });
+
+      return;
+    }
+
+    setProfileError(null);
     setProfile(toProfile(profileRow));
 
     if (!profileRow.family_id) {
@@ -350,6 +382,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       profile,
       family,
       configError,
+      profileError,
       signUp,
       signIn,
       signOut,
@@ -366,6 +399,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       profile,
       family,
       configError,
+      profileError,
       signUp,
       signIn,
       signOut,
