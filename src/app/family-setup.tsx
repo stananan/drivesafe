@@ -152,6 +152,9 @@ const styles = StyleSheet.create({
   },
   codeInput: {
     fontSize: 28,
+    // Same trap as the code displays elsewhere: a large fontSize needs its own
+    // lineHeight or the glyphs are clipped by the inherited 24.
+    lineHeight: 36,
     letterSpacing: 8,
     textAlign: 'center',
     minHeight: 64,
