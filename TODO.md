@@ -67,9 +67,14 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
 - [ ] **The live route is not streamed.** The parent dashboard follows the
   driver's published position; `drive_points` are only uploaded when the drive
   ends, so there is no live polyline. Fine for now, worth knowing.
-- [ ] **A crashed or force-quit app leaves a drive open forever.** Nothing sets
-  `ended_at` if the phone dies mid-drive. Consider a "stale drive" sweep, or
-  treat a drive with no heartbeat for N minutes as ended.
+- [x] A crashed or force-quit app leaving a drive open forever. Backgrounding
+  now ends the drive, and opening the Drive tab closes anything a previous
+  session abandoned, dated from its last heartbeat.
+- [ ] **Backgrounding ends the drive, which is right but blunt.** A driver who
+  checks a text mid-journey comes back to a finished drive and has to start a
+  new one. Recording already stops when the app leaves the screen, so nothing is
+  lost that was not lost already — but background recording, if it is ever
+  built, should replace this rather than sit alongside it.
 - [ ] **Parent alert preferences are cosmetic.** The toggles in
   `(parent)/settings.tsx` are local state that nothing reads. Either wire them
   to the profile row and honour them in `notifyFamilyParents`, or remove them.

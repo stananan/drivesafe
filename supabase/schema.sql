@@ -118,7 +118,12 @@ alter table public.drives
   -- was actually being monitored at the time.
   add column if not exists audio_monitoring boolean not null default false,
   -- Most recent speed sample, metres per second. Only meaningful mid-drive.
-  add column if not exists current_speed double precision not null default 0;
+  add column if not exists current_speed double precision not null default 0,
+  -- When the driver's phone last reported in. A drive whose phone stopped
+  -- talking — app killed, battery dead, signal gone — would otherwise stay open
+  -- forever, so this is what a later session uses to close it at the right time
+  -- rather than at whatever hour it was noticed.
+  add column if not exists heartbeat_at timestamptz;
 
 create index if not exists drives_driver_started_idx
   on public.drives (driver_id, started_at desc);

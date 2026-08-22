@@ -368,8 +368,60 @@ export async function heartbeatDrive(input: {
       top_speed: input.topSpeed,
       avg_speed: input.avgSpeed,
       current_speed: input.currentSpeed,
+      heartbeat_at: new Date().toISOString(),
     })
     .eq('id', input.driveId);
+}
+
+/**
+ * Closes any drive of this driver's that was left open.
+ *
+ * Recording only survives while the app is on screen, so a drive can be
+ * orphaned by a crash, a dead battery, or a phone that was simply put away.
+ * Nothing on the server notices, and the driver is left permanently "driving"
+ * on their family's map.
+ *
+ * The end time comes from the last heartbeat rather than from now, so a drive
+ * abandoned on Tuesday does not get recorded as having run until Friday. Drives
+ * that never got a heartbeat fall back to their start, which reads as a drive
+ * of no length — true enough, since nothing was ever recorded.
+ *
+ * Returns how many were closed.
+ */
+export async function closeAbandonedDrives(
+  driverId: string,
+  exceptDriveId?: string
+): Promise<number> {
+  const supabase = requireSupabase();
+
+  let query = supabase
+    .from('drives')
+    .select('id, started_at, heartbeat_at')
+    .eq('driver_id', driverId)
+    .is('ended_at', null);
+
+  if (exceptDriveId) query = query.neq('id', exceptDriveId);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  const stale = (data ?? []) as {
+    id: string;
+    started_at: string;
+    heartbeat_at: string | null;
+  }[];
+
+  for (const drive of stale) {
+    await supabase
+      .from('drives')
+      .update({
+        ended_at: drive.heartbeat_at ?? drive.started_at,
+        current_speed: 0,
+      })
+      .eq('id', drive.id);
+  }
+
+  return stale.length;
 }
 
 /**
