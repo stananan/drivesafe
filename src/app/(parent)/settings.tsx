@@ -18,7 +18,7 @@ import { useAsync } from '@/lib/use-async';
 
 export default function ParentSettingsScreen() {
   const theme = useTheme();
-  const { family, session, signOut } = useSession();
+  const { family, session, signOut, leaveFamily } = useSession();
 
   const drivers = useAsync(
     () => (family ? listFamilyDrivers(family.id) : Promise.resolve([])),
@@ -37,6 +37,17 @@ export default function ParentSettingsScreen() {
   const [alertOnSpeeding, setAlertOnSpeeding] = useState(true);
   const [alertOnHardBrake, setAlertOnHardBrake] = useState(true);
   const [alertOnDriveEnd, setAlertOnDriveEnd] = useState(false);
+
+  function confirmLeave() {
+    Alert.alert(
+      'Leave this family?',
+      'You will stop seeing your drivers and their drives. The family and their accounts stay as they are, and you can create or join another afterwards.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Leave', style: 'destructive', onPress: () => void leaveFamily() },
+      ]
+    );
+  }
 
   async function copyCode() {
     if (!family) return;
@@ -110,7 +121,10 @@ export default function ParentSettingsScreen() {
 
       <AboutCard />
 
-      <Button label="Sign out" variant="secondary" onPress={() => void signOut()} />
+      <View style={styles.rows}>
+        <Button label="Leave family" variant="secondary" onPress={confirmLeave} />
+        <Button label="Sign out" variant="secondary" onPress={() => void signOut()} />
+      </View>
 
       <DeleteAccountCard />
 
