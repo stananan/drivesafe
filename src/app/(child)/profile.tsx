@@ -101,7 +101,7 @@ export default function ChildProfileScreen() {
         </View>
 
         <ThemedText type="small" themeColor="textSecondary">
-          The camera records on a loop and keeps only the last twenty seconds — everything older
+          The camera records on a loop and keeps the last twenty seconds or so — everything older
           is deleted on your phone without ever being sent anywhere. Tap Save that during a drive,
           or let DriveSafe keep a clip automatically when it gets loud.
         </ThemedText>

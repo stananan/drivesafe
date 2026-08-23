@@ -182,15 +182,33 @@ function ClipRow({
 
   return (
     <Card>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded: isOpen }}
-        onPress={onToggle}
-        style={styles.header}>
+      <View style={styles.header}>
         <View style={[styles.dot, { backgroundColor: accent }]} />
 
         <View style={styles.headerText}>
-          <ThemedText type="smallBold">{clip.title ?? fallbackName}</ThemedText>
+          {draftTitle !== null ? (
+            <TextInput
+              value={draftTitle}
+              onChangeText={setDraftTitle}
+              onBlur={() => void commitRename()}
+              onSubmitEditing={() => void commitRename()}
+              placeholder="Name this clip"
+              placeholderTextColor={theme.textSecondary}
+              autoFocus
+              returnKeyType="done"
+              maxLength={80}
+              style={[styles.input, { borderColor: theme.tint, color: theme.text }]}
+            />
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityHint="Rename this clip"
+              onPress={() => setDraftTitle(clip.title ?? '')}
+              hitSlop={6}>
+              <ThemedText type="smallBold">{clip.title ?? fallbackName}</ThemedText>
+            </Pressable>
+          )}
+
           <ThemedText type="small" themeColor="textSecondary">
             {role === 'parent' ? `${clip.driverName} · ` : ''}
             {formatWhen(clip.recordedAt)}
@@ -198,10 +216,12 @@ function ClipRow({
           </ThemedText>
         </View>
 
-        <ThemedText type="small" themeColor="textSecondary">
-          {isOpen ? 'Hide' : 'Watch'}
-        </ThemedText>
-      </Pressable>
+        <Pressable accessibilityRole="button" onPress={onToggle} hitSlop={8}>
+          <ThemedText type="small" style={{ color: theme.tint }}>
+            {isOpen ? 'Hide' : 'Watch'}
+          </ThemedText>
+        </Pressable>
+      </View>
 
       {isOpen ? <ClipPlayer clip={clip} /> : null}
 
@@ -212,32 +232,11 @@ function ClipRow({
         <Detail label="Sound" value={clip.hasAudio ? 'Included' : 'Video only'} />
       </View>
 
-      {draftTitle !== null ? (
-        <TextInput
-          value={draftTitle}
-          onChangeText={setDraftTitle}
-          onBlur={() => void commitRename()}
-          onSubmitEditing={() => void commitRename()}
-          placeholder="Name this clip"
-          placeholderTextColor={theme.textSecondary}
-          autoFocus
-          returnKeyType="done"
-          maxLength={80}
-          style={[
-            styles.input,
-            { borderColor: theme.border, color: theme.text, backgroundColor: theme.background },
-          ]}
-        />
-      ) : null}
-
       <View style={styles.actions}>
         <Button
-          label={draftTitle !== null ? 'Save name' : 'Rename'}
+          label="Open the drive"
           variant="secondary"
-          disabled={isBusy}
-          onPress={() =>
-            draftTitle !== null ? void commitRename() : setDraftTitle(clip.title ?? '')
-          }
+          onPress={onOpenDrive}
           style={styles.action}
         />
         <Button
@@ -248,8 +247,6 @@ function ClipRow({
           style={styles.action}
         />
       </View>
-
-      <Button label="Open the drive" variant="secondary" onPress={onOpenDrive} />
     </Card>
   );
 }
@@ -291,12 +288,16 @@ const styles = StyleSheet.create({
     gap: Spacing.half,
     minWidth: 64,
   },
+  // Sits where the title was, so renaming happens in place rather than in a
+  // field somewhere else on the card.
   input: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: Radius.small,
-    paddingHorizontal: Spacing.three,
-    minHeight: 44,
-    fontSize: 16,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
   },
   actions: {
     flexDirection: 'row',
