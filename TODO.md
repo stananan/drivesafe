@@ -32,7 +32,9 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
 
 ## Before the first real road test
 
-- [ ] **Calibrate the audio thresholds.** `LOUD_THRESHOLD_DBFS = -12`,
+- [ ] **Calibrate the audio thresholds.** Now carries more weight than before:
+  noise is one of only two things that can cost points, so a threshold that
+  never fires makes the score a constant 100. `LOUD_THRESHOLD_DBFS = -12`,
   `SUSTAIN_MS = 1500`, and `COOLDOWN_MS = 60000` in
   `src/lib/use-audio-monitor.ts` are guesses. Both the drive screen and the
   parent dashboard draw the level graph with the alert line on it: sit in the
@@ -218,5 +220,9 @@ private Supabase bucket, and playback on the drive detail screen.
   still listed as Coming Soon on the drive screen.
 - [ ] `phone_distraction` is in the event enum and the scoring docs but nothing
   ever raises one.
-- [ ] Speed limits are not real. `SCORING.md` explains the assumption; a real
-  limit lookup would make the speeding events meaningful.
+- [ ] **Wire up real speed limits.** The single highest-value change left to the
+  score. Without it, speeding means "over 80 mph", so a driver doing 50 in a 25
+  zone scores a clean 100 — and most teen driving happens on 25-45 mph roads
+  where the term never fires. `SpeedLimitProvider` in `src/lib/scoring.ts` is
+  the seam; `SCORING.md` compares OpenStreetMap, Mapbox and HERE and sketches
+  the one-request-per-drive Overpass approach.

@@ -110,7 +110,13 @@ function newCursor(): Cursor {
   return { ...ORIGIN, heading: 0, t: 1_700_000_000_000 };
 }
 
-type Scenario = { name: string; expectation: string; build: () => DrivePoint[] };
+type Scenario = {
+  name: string;
+  expectation: string;
+  build: () => DrivePoint[];
+  /** Noise flags the microphone would have raised on this drive. */
+  loudFlags?: number;
+};
 
 const SCENARIOS: Scenario[] = [
   {
@@ -176,8 +182,8 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
-    name: 'Reckless: fast bend and a hard stop',
-    expectation: 'should score noticeably lower than the others',
+    name: 'Fast bend and hard stops, but never over 80',
+    expectation: 'scores 100 — the deliberate cost of dropping cornering and braking',
     build: () => {
       const c = newCursor();
       return [
@@ -231,11 +237,36 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
-    name: 'Sustained speeding on a 65 road',
-    expectation: 'should be penalised for speed',
+    name: 'Sustained 85 mph',
+    expectation: 'should be penalised — this is the one thing speed still catches',
     build: () => {
       const c = newCursor();
       return [...ramp(c, 0, 85, 2.0), ...straight(c, 85, 600), ...ramp(c, 85, 0, 2.0)];
+    },
+  },
+  {
+    name: 'Legal speed, but a carful of noise',
+    expectation: 'should lose points for the noise alone',
+    build: () => {
+      const c = newCursor();
+      return [...ramp(c, 0, 35, 1.5), ...straight(c, 35, 600), ...ramp(c, 35, 0, 1.5)];
+    },
+    loudFlags: 4,
+  },
+  {
+    name: 'Brief 95 mph blast',
+    expectation: 'short but far over — should hurt',
+    build: () => {
+      const c = newCursor();
+      return [
+        ...ramp(c, 0, 60, 2.0),
+        ...straight(c, 60, 120),
+        ...ramp(c, 60, 95, 2.0),
+        ...straight(c, 95, 30),
+        ...ramp(c, 95, 60, 2.5),
+        ...straight(c, 60, 120),
+        ...ramp(c, 60, 0, 2.0),
+      ];
     },
   },
 ];
@@ -266,7 +297,10 @@ for (const scenario of SCENARIOS) {
 
   // Scored the way finishDrive scores it, minus the noise flags, which come
   // from the microphone rather than the trace.
-  const result = scoreDrive(points, { durationSeconds, loudAudioAlerts: 0 });
+  const result = scoreDrive(points, {
+    durationSeconds,
+    loudAudioAlerts: scenario.loudFlags ?? 0,
+  });
 
   console.log(`${scenario.name}`);
   console.log(`  ${scenario.expectation}`);
@@ -275,9 +309,8 @@ for (const scenario of SCENARIOS) {
   );
   console.log(`  SCORE ${result.score}`);
   console.log(
-    `  penalties  speeding ${result.breakdown.speeding.toFixed(3)}` +
-      `  cornering ${result.breakdown.cornering.toFixed(3)}` +
-      `  braking ${result.breakdown.braking.toFixed(3)}`
+    `  penalties  speeding ${result.breakdown.speeding.toFixed(2)}` +
+      `  noise ${result.breakdown.distraction.toFixed(0)}`
   );
 
   const counts = new Map<string, number>();
