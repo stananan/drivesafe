@@ -1,54 +1,42 @@
 /**
- * The rolling-buffer dashcam.
+ * The rolling dashcam.
  *
- * Phones will not hand you a ring buffer of video. What they will do is record
- * a clip of a fixed length and give you a file, so that is what this does: back
- * to back segments, keeping the trailing few and deleting the rest as they fall
- * out of the window. Saving a clip keeps whichever segments are on disk at that
- * moment, which is why a saved clip is several files and not one.
+ * A saved clip is exactly one file. That constraint drives the whole design,
+ * because nothing available to an Expo app can join video: if a clip is to be
+ * one piece, it has to be recorded as one piece.
  *
- * Two consequences worth knowing before reading the code:
+ * So the camera runs a single recording at a time and throws it away when it
+ * ends unsaved. Saving stops that recording and keeps the file — everything it
+ * has captured since it started, which is at least the last twenty seconds and
+ * at most `SEGMENT_MAX_SECONDS`. Overshooting is fine: a clip that runs long
+ * carries extra context before the moment, whereas one that stops short has
+ * missed the thing worth keeping.
  *
- *   - There is a gap of a few hundred milliseconds between segments while the
- *     camera stops and starts. Nothing can be done about that without native
- *     code, and it is far better than the alternative of holding an hour of
- *     footage to guarantee continuity.
- *   - Clips record sound, which puts the camera and the loudness monitor on the
- *     microphone at the same time. Whether iOS actually allows that is an open
- *     question that only a real phone can answer, so the caller passes
- *     `audioEnabled` and can flip it off when a recording fails: the effect
- *     re-runs and the loop retries muted rather than leaving a drive with no
- *     dashcam at all.
+ * The case that needs care is a save arriving moments after a recording began,
+ * when there is barely any footage to hand back. Rather than return a
+ * two-second clip, or reach for the previous file and produce a second part,
+ * the flush waits until the recording is long enough. The clip then also holds
+ * a few seconds of what happened next, which for a dashcam is no bad thing.
+ *
+ * Video records with sound when the caller says it can. Whether a phone will
+ * give the microphone to the camera and the loudness monitor at once is an open
+ * question, so `audioEnabled` can be flipped off after a failure: changing it
+ * restarts the loop, and the retry runs muted.
  */
 
 import { CameraView } from 'expo-camera';
 import { File } from 'expo-file-system';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/** How far back a saved clip reaches. */
-export const CLIP_SECONDS = 20;
+/** A saved clip is never shorter than this. */
+export const CLIP_MIN_SECONDS = 20;
 
 /**
- * Segment length, which is also how many files a clip ends up being.
- *
- * Nothing in an Expo app can join video files, so the only way to make a saved
- * clip feel like one recording is to record it as one to begin with. Matching
- * the segment length to the clip length does that: a save takes the segment in
- * progress and, when it is short, the one before it — one or two files rather
- * than the four that five-second segments produced.
- *
- * The cost is granularity. A clip can only begin on a segment boundary, so it
- * may reach further back than twenty seconds. Overshooting is the harmless
- * direction: extra footage before the moment is context, whereas a clip that
- * stops short has missed the thing worth keeping.
+ * And never longer than this. The cap exists so a recording cannot grow to the
+ * length of the whole drive — at 720p that would be hundreds of megabytes for a
+ * single save, against a free storage tier of one gigabyte.
  */
-const SEGMENT_SECONDS = 20;
-
-/**
- * Two: the segment in progress, plus the last complete one to fall back on when
- * a save lands moments after a boundary.
- */
-const RING_SIZE = 2;
+const SEGMENT_MAX_SECONDS = 40;
 
 export type DashcamStatus = 'idle' | 'starting' | 'recording' | 'error';
 
@@ -63,17 +51,17 @@ export type Dashcam = {
   status: DashcamStatus;
   /** Attach to the `<CameraView>` this hook drives. */
   cameraRef: React.RefObject<CameraView | null>;
-  /** Seconds of footage currently held, capped by the ring. */
+  /** Seconds the current recording has been running. */
   bufferedSeconds: number;
   errorMessage: string | null;
   /**
-   * Ends the segment in progress and returns the whole trailing window, so a
-   * saved clip runs right up to the moment it was asked for rather than
-   * stopping wherever the last segment happened to end.
+   * Ends the current recording and hands back its file, waiting first if it has
+   * not yet reached `CLIP_MIN_SECONDS`. Resolves null when there is nothing
+   * recording to keep.
    */
-  flush: () => Promise<DashcamSegment[]>;
-  /** Releases segments once they have been dealt with. */
-  release: (segments: DashcamSegment[]) => void;
+  flush: () => Promise<DashcamSegment | null>;
+  /** Deletes a segment once the caller is done with it. */
+  release: (segment: DashcamSegment | null) => void;
 };
 
 function discard(uri: string) {
@@ -81,8 +69,8 @@ function discard(uri: string) {
     const file = new File(uri);
     if (file.exists) file.delete();
   } catch {
-    // A segment left in the cache is not worth failing a drive over; the OS
-    // clears that directory on its own schedule.
+    // A file left in the cache is not worth failing a drive over; the OS clears
+    // that directory on its own schedule.
   }
 }
 
@@ -104,73 +92,68 @@ export function useDashcam({
   const [bufferedSeconds, setBufferedSeconds] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const ring = useRef<DashcamSegment[]>([]);
+  /** When the recording currently running began. Null between recordings. */
+  const startedAt = useRef<number | null>(null);
 
-  // Segments handed to a caller, which must survive until they say otherwise.
-  const retained = useRef<Set<string>>(new Set());
+  /** Set while a flush waits for the current recording to be handed over. */
+  const pendingSave = useRef<((segment: DashcamSegment | null) => void) | null>(null);
 
-  // Set while a flush waits for the segment in progress to land.
-  const pendingFlush = useRef<(() => void) | null>(null);
-
-  const prune = useCallback(() => {
-    while (ring.current.length > RING_SIZE) {
-      const oldest = ring.current.shift();
-      if (oldest && !retained.current.has(oldest.uri)) discard(oldest.uri);
-    }
-
-    setBufferedSeconds(
-      Math.round(ring.current.reduce((total, segment) => total + segment.durationSeconds, 0))
-    );
+  const release = useCallback((segment: DashcamSegment | null) => {
+    if (segment) discard(segment.uri);
   }, []);
 
-  const release = useCallback(
-    (segments: DashcamSegment[]) => {
-      for (const segment of segments) {
-        retained.current.delete(segment.uri);
-        // Anything already out of the window can go now that it is free.
-        if (!ring.current.some((held) => held.uri === segment.uri)) discard(segment.uri);
+  const flush = useCallback(async (): Promise<DashcamSegment | null> => {
+    if (status !== 'recording' || !cameraRef.current || startedAt.current === null) {
+      return null;
+    }
+
+    // Too little footage to be worth keeping yet. Let it run on rather than
+    // save a two-second clip or graft a second file onto the front.
+    const elapsed = (Date.now() - startedAt.current) / 1000;
+    if (elapsed < CLIP_MIN_SECONDS) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, (CLIP_MIN_SECONDS - elapsed) * 1000)
+      );
+    }
+
+    return new Promise<DashcamSegment | null>((resolve) => {
+      pendingSave.current = resolve;
+
+      try {
+        cameraRef.current?.stopRecording();
+      } catch {
+        pendingSave.current = null;
+        resolve(null);
+        return;
       }
-    },
-    []
-  );
 
-  const flush = useCallback(async (): Promise<DashcamSegment[]> => {
-    // Close the segment in progress so the clip includes it, then wait for the
-    // recording loop to hand it over.
-    if (status === 'recording' && cameraRef.current) {
-      await new Promise<void>((resolve) => {
-        pendingFlush.current = resolve;
-
-        try {
-          cameraRef.current?.stopRecording();
-        } catch {
-          resolve();
+      // Never leave a caller waiting on a camera that failed to stop.
+      setTimeout(() => {
+        if (pendingSave.current === resolve) {
+          pendingSave.current = null;
+          resolve(null);
         }
+      }, 5_000);
+    });
+  }, [status]);
 
-        // Never leave a caller waiting on a camera that failed to stop.
-        setTimeout(() => {
-          if (pendingFlush.current === resolve) {
-            pendingFlush.current = null;
-            resolve();
-          }
-        }, 3_000);
-      });
+  // Ticks the "how much is held" readout, so the recording loop does not have
+  // to re-render once a second on its own account.
+  useEffect(() => {
+    if (status !== 'recording') {
+      setBufferedSeconds(0);
+      return;
     }
 
-    // Walk back from the newest segment until the window is covered, so a clip
-    // is the last twenty seconds rather than everything still on disk.
-    const trailing: DashcamSegment[] = [];
-    let covered = 0;
+    const timer = setInterval(() => {
+      if (startedAt.current === null) return;
 
-    for (let i = ring.current.length - 1; i >= 0 && covered < CLIP_SECONDS; i--) {
-      const segment = ring.current[i];
-      trailing.unshift(segment);
-      covered += segment.durationSeconds;
-    }
+      setBufferedSeconds(
+        Math.min(SEGMENT_MAX_SECONDS, Math.round((Date.now() - startedAt.current) / 1000))
+      );
+    }, 1_000);
 
-    for (const segment of trailing) retained.current.add(segment.uri);
-
-    return trailing;
+    return () => clearInterval(timer);
   }, [status]);
 
   useEffect(() => {
@@ -180,10 +163,6 @@ export function useDashcam({
     }
 
     let cancelled = false;
-
-    // Captured for the cleanup below: by the time it runs, the ref may already
-    // have been cleared by React unmounting the camera.
-    const retainedFiles = retained.current;
     let activeCamera: CameraView | null = null;
 
     async function loop() {
@@ -199,35 +178,48 @@ export function useDashcam({
         if (!camera) break;
 
         activeCamera = camera;
-        const startedAt = Date.now();
+        const began = Date.now();
+        startedAt.current = began;
 
         try {
           setStatus('recording');
 
-          const result = await camera.recordAsync({ maxDuration: SEGMENT_SECONDS });
+          const result = await camera.recordAsync({ maxDuration: SEGMENT_MAX_SECONDS });
+
+          startedAt.current = null;
 
           if (cancelled) {
             if (result?.uri) discard(result.uri);
             break;
           }
 
-          if (result?.uri) {
-            ring.current.push({
-              uri: result.uri,
-              startedAt,
-              durationSeconds: (Date.now() - startedAt) / 1000,
-            });
-            prune();
-          }
+          const waiting = pendingSave.current;
 
-          // A flush was waiting on exactly this segment.
-          const waiting = pendingFlush.current;
-          if (waiting) {
-            pendingFlush.current = null;
-            waiting();
+          if (waiting && result?.uri) {
+            // Someone is saving this one. It belongs to them now, and they call
+            // release() when they are done with it.
+            pendingSave.current = null;
+            waiting({
+              uri: result.uri,
+              startedAt: began,
+              durationSeconds: (Date.now() - began) / 1000,
+            });
+          } else if (result?.uri) {
+            // Nobody wanted it. This is the normal case, and the reason an hour
+            // of dashcam costs no storage at all.
+            discard(result.uri);
           }
         } catch (error) {
+          startedAt.current = null;
+
           if (cancelled) break;
+
+          // A save waiting on a recording that just failed must not hang.
+          const waiting = pendingSave.current;
+          if (waiting) {
+            pendingSave.current = null;
+            waiting(null);
+          }
 
           setStatus('error');
           setErrorMessage(
@@ -242,22 +234,15 @@ export function useDashcam({
 
     return () => {
       cancelled = true;
+      startedAt.current = null;
 
       try {
         activeCamera?.stopRecording();
       } catch {
         // Already stopped, or the view is gone.
       }
-
-      // Nothing buffered outlives the drive it was recorded on.
-      for (const segment of ring.current) {
-        if (!retainedFiles.has(segment.uri)) discard(segment.uri);
-      }
-
-      ring.current = [];
-      setBufferedSeconds(0);
     };
-  }, [enabled, audioEnabled, prune]);
+  }, [enabled, audioEnabled]);
 
   return { status, cameraRef, bufferedSeconds, errorMessage, flush, release };
 }

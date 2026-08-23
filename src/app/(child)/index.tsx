@@ -134,20 +134,19 @@ export default function DriveScreen() {
 
       setIsSavingClip(true);
 
-      const segments = await dashcam.flush();
+      // Waits for the recording to reach clip length before handing it over, so
+      // this can take a moment when a save lands just after one started.
+      const segment = await dashcam.flush();
 
       try {
-        if (segments.length === 0) return;
+        if (!segment) return;
 
         await saveClip({
           driveId: id,
           reason,
-          recordedAt: segments[0].startedAt,
+          recordedAt: segment.startedAt,
           hasAudio: clipAudio,
-          parts: segments.map((segment) => ({
-            uri: segment.uri,
-            durationSeconds: segment.durationSeconds,
-          })),
+          parts: [{ uri: segment.uri, durationSeconds: segment.durationSeconds }],
         });
 
         setLastClipAt(Date.now());
@@ -157,7 +156,7 @@ export default function DriveScreen() {
           error instanceof Error ? error.message : 'Check your connection and try again.'
         );
       } finally {
-        dashcam.release(segments);
+        dashcam.release(segment);
         setIsSavingClip(false);
       }
     },
@@ -480,8 +479,8 @@ export default function DriveScreen() {
 
               <ThemedText type="small" themeColor="textSecondary">
                 {clipAudio
-                  ? 'Recording on a loop with sound, keeping only the last twenty seconds. Tap below to keep what just happened.'
-                  : 'Recording on a loop, keeping only the last twenty seconds. Tap below to keep what just happened.'}
+                  ? 'Recording on a loop with sound, keeping the last twenty seconds or so. Tap below to keep what just happened.'
+                  : 'Recording on a loop, keeping the last twenty seconds or so. Tap below to keep what just happened.'}
               </ThemedText>
 
               {clipAudioFailed ? (
