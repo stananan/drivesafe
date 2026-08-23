@@ -60,6 +60,25 @@ const WEIGHT_DISTRACTION = 6.0;
 
 /** Fixes worse than this are too noisy to derive curvature from. */
 const MAX_ACCURACY_METERS = 30;
+
+/**
+ * Ceilings on what a car can physically do, used to clamp rather than reject.
+ *
+ * GPS-derived acceleration is differentiated position, so it amplifies every
+ * error in the trace. A dropped fix followed by a resumed one looks identical to
+ * an instantaneous change of speed, and produces accelerations of tens of metres
+ * per second squared — figures no car achieves and no driver deserves to be
+ * scored on. Simulating that exact discontinuity turned an ordinary town drive
+ * into a score of 33, which is how these got here.
+ *
+ * Cornering is clamped, because it is time-weighted: one bad sample out of
+ * hundreds barely moves the average, and the ceiling is roughly where tyres let
+ * go anyway. Braking is zeroed instead, because it is an incident *count* with a
+ * quadratic on it, where a single false reading is worth more than the rest of
+ * the drive put together.
+ */
+const MAX_PLAUSIBLE_LONGITUDINAL = 10.0; // m/s², a little over 1 g
+const MAX_PLAUSIBLE_LATERAL = 12.0; // m/s², past the point tyres let go
 /** Below this speed, GPS heading is meaningless and curvature explodes. */
 const MIN_SPEED_FOR_CURVATURE = 2.0; // m/s, ~4.5 mph
 
@@ -167,15 +186,46 @@ export function analyzeTrace(route: DrivePoint[], limitFor?: SpeedLimitProvider)
     const curvature =
       speed >= MIN_SPEED_FOR_CURVATURE && arc > 1 ? turn / arc : 0;
 
-    const speedIn = dIn / Math.max(0.5, (current.t - previous.t) / 1000);
-    const speedOut = dOut / Math.max(0.5, (next.t - current.t) / 1000);
-    const longitudinalAcceleration = (speedOut - speedIn) / Math.max(0.5, dt);
+    // Acceleration comes from the *reported* speeds where they exist, not from
+    // differentiated position.
+    //
+    // The OS derives speed from Doppler shift, which does not move when a
+    // reflection off a building throws a fix sideways. Position does, and
+    // differentiating it turns one bad fix into an acceleration of forty metres
+    // per second squared — which, being an incident count with a quadratic on
+    // it, was enough on its own to take a calm drive from 100 to 2. Position is
+    // still the fallback, because iOS reports -1 for speed often enough to need
+    // one.
+    // The two paths measure over different spans and must be divided by their
+    // own. Reported speeds are instants at `previous` and `next`, a full sample
+    // apart; position-derived speeds are averages over the two half-intervals,
+    // whose midpoints are half that. Dividing the first by the second's span
+    // doubles every acceleration and turns ordinary town braking into an
+    // incident.
+    const span = Math.max(0.5, (next.t - previous.t) / 1000);
+
+    const rawLongitudinal =
+      previous.speed !== null && next.speed !== null
+        ? (next.speed - previous.speed) / span
+        : (dOut / Math.max(0.5, (next.t - current.t) / 1000) -
+            dIn / Math.max(0.5, (current.t - previous.t) / 1000)) /
+          Math.max(0.5, dt);
+
+    // A backstop for the fallback path: no car does this, so it is a bad fix
+    // rather than a driver, and an unknown reading is better than a false one.
+    const longitudinalAcceleration =
+      Math.abs(rawLongitudinal) > MAX_PLAUSIBLE_LONGITUDINAL ? 0 : rawLongitudinal;
+
+    const lateralAcceleration = Math.min(
+      MAX_PLAUSIBLE_LATERAL,
+      speed * speed * curvature
+    );
 
     samples.push({
       speed,
       speedLimit: limitFor ? limitFor(current) : inferSpeedLimit(speed),
       curvature,
-      lateralAcceleration: speed * speed * curvature,
+      lateralAcceleration,
       longitudinalAcceleration,
       dt,
       lat: current.lat,
@@ -330,7 +380,7 @@ function extractEvents(samples: ScoredSample[]): Omit<DriveEvent, 'id'>[] {
 
     if (sample.lateralAcceleration >= LATERAL_COMFORT * 1.6) {
       events.push({
-        type: 'speeding',
+        type: 'harsh_corner',
         at: sample.t,
         detail: `Took a bend at ${Math.round(sample.speed * MPH)} mph`,
         lat: sample.lat,

@@ -89,6 +89,7 @@ export type DriveEventType =
   | 'speeding'
   | 'hard_brake'
   | 'rapid_accel'
+  | 'harsh_corner'
   | 'phone_distraction'
   | 'loud_audio';
 
