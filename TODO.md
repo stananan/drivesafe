@@ -220,9 +220,14 @@ private Supabase bucket, and playback on the drive detail screen.
   still listed as Coming Soon on the drive screen.
 - [ ] `phone_distraction` is in the event enum and the scoring docs but nothing
   ever raises one.
-- [ ] **Wire up real speed limits.** The single highest-value change left to the
-  score. Without it, speeding means "over 80 mph", so a driver doing 50 in a 25
-  zone scores a clean 100 — and most teen driving happens on 25-45 mph roads
-  where the term never fires. `SpeedLimitProvider` in `src/lib/scoring.ts` is
-  the seam; `SCORING.md` compares OpenStreetMap, Mapbox and HERE and sketches
-  the one-request-per-drive Overpass approach.
+- [x] Real speed limits from OpenStreetMap. `npm run check-limits` verifies the
+  matching against a real Overpass response.
+- [ ] **Watch what Overpass does on a real drive.** It is a donated public
+  service with no SLA, and three of four instances refused in a row while this
+  was being built. Everything fails soft to the flat 80 mph limit, but if that
+  happens often the scores quietly get less meaningful without anything looking
+  broken. If it becomes a problem, Mapbox is the paid way out.
+- [ ] **Check the class fallback against real signs.** Untagged roads get
+  California's prima facie limit plus 8 mph of margin. On a road you know the
+  posted limit of, confirm the app is not scoring you against a number that is
+  wrong in the dangerous direction.

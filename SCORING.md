@@ -43,17 +43,53 @@ produced an acceleration around 40 m/s² and scored an otherwise careful drive
 
 ### The limit
 
-Without road data, $L_i$ is a flat **80 mph**.
+$L_i$ comes from OpenStreetMap, looked up when the drive ends. `speed-limits.ts`
+does the work; `npm run check-limits` verifies it against a real Overpass
+response for central Marin.
 
-That is high on purpose. Not knowing the actual limit, the only honest line is
-one nobody crosses by accident, because a score that punishes a driver who did
-nothing wrong is worse than one that occasionally lets something go — they stop
-believing it, and then they switch it off.
+**Coverage is partial, and predictably so.** In that sample, every motorway and
+every secondary road carried a `maxspeed` tag. Not one of the 122 residential
+streets did. So there are two paths:
 
-**It is also the model's biggest weakness, and worth being blunt about.** A
-driver doing 50 in a 25 mph school zone scores a clean 100. Most teen driving
-happens on 25–45 mph roads, where this term never fires at all. Until a real
-limit source is wired in, speeding effectively means "motorway speeding".
+| | Source | Margin |
+| --- | --- | --- |
+| **Tagged** | The `maxspeed` on the way | None — this is read, not guessed |
+| **Untagged** | California's prima facie limit for the road class | +8 mph |
+
+The margin exists because a guess that comes in low invents a speeding penalty
+out of legal driving, and a driver punished for obeying a sign stops believing
+the score entirely. Some residential streets really are posted at 35, so an
+inferred 25 is given room to be wrong in the safe direction.
+
+Where neither applies — off the map, or Overpass unreachable — the limit falls
+back to a flat **80 mph**, which is the old behaviour and deliberately high
+enough that nobody crosses it by accident.
+
+### Matching a fix to a road
+
+Harder than it sounds, and the reason this is not fifty lines. A GPS fix sits
+within a few metres of several roads at once: the street being driven, whatever
+crosses it, the frontage road beside the motorway. Nearest-road matching picks
+the wrong one regularly, and a single wrong pick invents a limit change halfway
+down a street.
+
+Three things resolve it:
+
+1. **Distance to the road, not to its nodes.** Perpendicular distance to each
+   segment, so a long straight way is not judged by how far away its endpoints
+   happen to be.
+2. **Heading.** A road running across the direction of travel is not the road
+   being driven, however close it is. Bearings are compared modulo 180°, since a
+   street runs the same way whichever end you enter from. Below walking pace the
+   heading is noise, so the filter is dropped and only a road within 10 m is
+   accepted.
+3. **Smoothing.** A fix whose limit disagrees with both its neighbours takes
+   theirs. A real limit change lasts more than one fix; a mis-snap does not.
+
+Verified against real geometry: 100% of fixes along a tagged motorway read
+65 mph, 100% along a tagged secondary read 35, 100% along an untagged
+residential fell back to the class limit, one street reads as exactly one limit
+end to end, and a drive nowhere near the data gets no invented limit at all.
 
 ---
 
@@ -130,14 +166,10 @@ The code is in the git history if the evidence ever justifies bringing it back.
 
 ---
 
-## Real speed limits: the upgrade that matters
+## Why OpenStreetMap, and what it would take to move
 
-Every limitation above collapses into one: the app does not know what road it is
-on. `SpeedLimitProvider` is the seam — a function from coordinate to limit.
-Supply one and every drive is scored against the road it was actually on, with
-no other change anywhere in the app.
-
-The options, honestly compared:
+`SpeedLimitProvider` is still the seam — a function from coordinate to limit — so
+swapping the source changes nothing else. The options, honestly compared:
 
 | Source | Cost | Coverage | Catch |
 | --- | --- | --- | --- |
@@ -146,14 +178,15 @@ The options, honestly compared:
 | **HERE** | Free to ~1k requests/day | Best of the three | Needs a token; the daily cap is tight |
 | **Google Roads** | Paid only | Good | Speed limits need an Asset Tracking licence — effectively out of reach |
 
-**Overpass is the right first move**, and one request per drive is enough: fetch
-every way carrying a `maxspeed` inside the drive's bounding box when the drive
-ends, then match each point to the nearest one. That is a single query for a
-whole journey, not one per GPS fix, which keeps it inside what a free endpoint
-will tolerate.
+Overpass is what ships, at **one request per drive** — every way in the drive's
+bounding box, matched locally — rather than one per GPS fix. Long drives split
+into at most four requests.
 
-Where `maxspeed` is missing — and on residential streets it often is — fall back
-down a ladder: `maxspeed` → infer from the `highway` class (`motorway` 65,
-`primary` 45, `residential` 25) → the 80 mph absolute. Never invent a *lower*
-limit than the evidence supports, because that manufactures a speeding penalty
-out of legal driving, which is the one failure this model cannot afford.
+**Its weakness is availability, not data.** While this was being written, three
+of four public instances refused in a row: one too busy, one a 500, one an empty
+body. So three mirrors are tried in turn, and everything fails soft — a drive
+scored against the flat 80 is worse than one scored properly, but it is far
+better than a drive that will not save because a donated server was busy.
+
+If that becomes a problem, Mapbox is the upgrade: a token, a billing account,
+and an SLA in exchange for the flakiness.
