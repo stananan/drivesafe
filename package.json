@@ -49,7 +49,8 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "doctor": "npx expo-doctor",
-    "simulate": "tsx scripts/simulate-drive.ts"
+    "simulate": "tsx scripts/simulate-drive.ts",
+    "check-limits": "tsx scripts/check-speed-limits.ts"
   },
   "private": true
 }

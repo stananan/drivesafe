@@ -7,6 +7,7 @@
  */
 
 import { scoreDrive } from '@/lib/scoring';
+import { buildSpeedLimitProvider } from '@/lib/speed-limits';
 import { requireSupabase } from '@/lib/supabase';
 import type { AudioLevel, Drive, DriveEvent, DrivePoint, LinkedDriver } from '@/types/drive';
 
@@ -531,8 +532,14 @@ export type FinishedDriveInput = {
 export async function finishDrive(input: FinishedDriveInput): Promise<void> {
   const supabase = requireSupabase();
 
+  // Real limits from OpenStreetMap where they can be had. Resolves null when
+  // Overpass is busy or the roads are untagged, and the score falls back to the
+  // absolute limit — a drive must never fail to save because a map server did.
+  const limitFor = await buildSpeedLimitProvider(input.route).catch(() => null);
+
   // Scored on the phone from the trace we just recorded — see SCORING.md.
   const scored = scoreDrive(input.route, {
+    limitFor: limitFor ?? undefined,
     loudAudioAlerts: input.loudAudioAlerts ?? 0,
     durationSeconds: Math.max(0, (input.endedAt - input.startedAt) / 1000),
   });
