@@ -7,6 +7,45 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
 
 ---
 
+## What to do next, in order
+
+The app is feature-complete enough to submit. What it has never been is *driven*.
+Everything below is ordered so that the thing most likely to invalidate the rest
+comes first.
+
+**1. Drive it. This week, before anything else.**
+Nothing further is worth building until one real journey works end to end. The
+checklist is under [The first road test](#the-first-road-test). Bring a second
+phone signed in as the parent, and write down the drive id — if the score comes
+out wrong, the trace is in `drive_points` and can be replayed offline instead of
+guessed at.
+
+**2. Calibrate the noise threshold.**
+Noise is now one of only two things that can cost points, so if the threshold
+never fires, every drive scores 100 and the score means nothing. This is the one
+number that cannot be worked out anywhere but inside a car.
+
+**3. Decide what the submission actually is.**
+The Congressional App Challenge wants a demo video and source code. It does not
+require an App Store listing, and the App Store work — $99, an 18+ enrolment,
+days of review — buys nothing the judges asked for. Consider deliberately not
+doing it before the deadline, and spending that time on the demo instead. The
+blockers are already cleared if you change your mind.
+
+**4. Fix whatever the road test breaks.** Reserve time for this; something will.
+
+**5. Then, and only then, the known gaps.**
+In the order they would embarrass a demo: the screen has to stay on for a drive
+to record, a drive ending in a dead zone is lost, and nothing ever deletes
+anything. None is worth starting before step 1.
+
+**Standing hazard, unrelated to any of the above:** a free Supabase project
+suspends after 7 days of inactivity, and every install breaks until someone
+restores it. If judges open this weeks after submission, that is what they will
+find. Put a reminder somewhere.
+
+---
+
 ## Do before any App Store submission
 
 - [!] **Fill in the privacy contact email.** Marked `TODO` in
