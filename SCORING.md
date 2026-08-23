@@ -1,297 +1,159 @@
 # How DriveSafe scores a drive
 
-Every drive gets a number from 0 to 100. This document is the whole derivation:
-what the equation is, why each piece is shaped the way it is, and what we do
-about speed limits.
+Every drive starts at 100. Two things take points off: **going too fast**, and
+**letting the car get loud**. Nothing else.
 
-Implementation: `src/lib/scoring.ts`.
+$$
+\text{score} = 100 - \min\!\Big(100,\; W_s P_s + W_d N_d\Big)
+$$
+
+That is the entire model. It is deliberately smaller than what it replaced, and
+the reasoning for that is at the bottom under [What was removed, and
+why](#what-was-removed-and-why).
 
 ---
 
-## The equation
+## 1. Speeding
 
 $$
-\text{score} = 100 - \min\!\Big(100,\; W_s P_s + W_\ell P_\ell + W_j P_j + W_d P_d\Big)
+P_s = \sum_i \frac{\Delta t_i}{10}\left(\frac{\max(0,\; v_i - L_i)}{v_\text{ref}}\right)^{\!2}
+\qquad v_\text{ref} = 5\ \text{mph}
 $$
 
-Four penalties: **speeding**, **cornering**, **harsh braking/acceleration**, and
-**distraction**. None of them is a running total.
+$v_i$ is speed, $L_i$ the limit at that point, $\Delta t_i$ the seconds the
+sample stands for. Weight $W_s = 0.5$.
 
-The first three come from the GPS trace alone. Distraction is the exception: it
-counts the sustained loud-audio alerts raised by the microphone during the
-drive, which the trace cannot see, so the caller passes the count in.
+**Time-weighted, not counted.** It matters how long the car was over the limit,
+not how many separate times it crossed. One long spell and three short ones
+adding to the same duration cost the same, which is right: the risk is the
+exposure.
 
-Speeding and cornering are *states* — things you are doing for a stretch of road
-— so they are *time-weighted means* over the drive:
+**Squared, because crash energy is.** Kinetic energy goes as $v^2$ and the risk
+of a fatal outcome rises faster still — roughly to the fourth power of impact
+speed in the pedestrian literature. Ten over is far worse than twice five over,
+and the arithmetic should say so.
 
-$$
-P = \frac{\sum_i \Delta t_i \cdot f(\text{sample}_i)}{\sum_i \Delta t_i}
-$$
+**Where the speed comes from.** The phone's own reading, which it derives from
+Doppler shift. This matters more than it looks: an earlier version recovered
+speed by differentiating position, and a single reflection off a building —
+which moves a position fix tens of metres while leaving Doppler untouched —
+produced an acceleration around 40 m/s² and scored an otherwise careful drive
+**2 out of 100**. Position is now only the fallback, for the times iOS reports
+`-1`.
 
-where $\Delta t_i$ is how many seconds sample $i$ represents. $P$ is
-dimensionless: "how hard was this drive pushed, on average".
+### The limit
 
-Harsh braking is different — it is an *incident*, not a state. Averaging
-incidents over time would dilute five hard stops in a long drive into nothing,
-so those are counted **per ten minutes** instead:
+Without road data, $L_i$ is a flat **80 mph**.
 
-$$
-P_j = \frac{\sum_{\text{incidents}} f_j}{T / 600\text{s}}
-$$
+That is high on purpose. Not knowing the actual limit, the only honest line is
+one nobody crosses by accident, because a score that punishes a driver who did
+nothing wrong is worse than one that occasionally lets something go — they stop
+believing it, and then they switch it off.
 
-Distraction is counted the same way, for the same reason — a loud spell is
-something that happens, not a state the drive is in. It is rated against the
-drive's **wall-clock length** $T_{\text{drive}}$ rather than the analysable
-trace, floored at ten minutes:
+**It is also the model's biggest weakness, and worth being blunt about.** A
+driver doing 50 in a 25 mph school zone scores a clean 100. Most teen driving
+happens on 25–45 mph roads, where this term never fires at all. Until a real
+limit source is wired in, speeding effectively means "motorway speeding".
 
-$$
-P_d = \frac{N_{\text{loud}}}{\max(T_{\text{drive}},\,600\text{s}) / 600\text{s}}
-$$
+---
 
-Two details matter here. Using wall-clock time means noise while stopped at a
-light still counts, even though a stationary car contributes no usable trace.
-The floor means a two-minute drive with one flag is not scored five times worse
-than a ten-minute drive with the same flag — short trips are not more
-distracted, they are just short.
-
-**Why not a running total.** If penalties accumulated, a long drive would always
-score worse than a short one, and a driver's score would decay simply because
-they drive a lot. Normalising asks the better question: *how did they drive*, not
-*how long*. It also closes the obvious loophole — you cannot bury one reckless
-stretch under thirty minutes of motorway cruising.
-
-> This distinction was not obvious up front. The first version of this equation
-> normalised everything the same way, which made five hard stops in a half-hour
-> drive worth about 0.08 points — the tests caught it.
-
-### 1. Speeding
+## 2. Distraction
 
 $$
-f_s = \left(\frac{\max(0,\; v_i - L_i)}{v_{\text{ref}}}\right)^{\!2}
-\qquad v_{\text{ref}} = 5\ \text{mph}
+N_d = \text{count of sustained loud-audio alerts}
 $$
 
-$v_i$ is speed, $L_i$ is the posted limit at that point.
+Weight $W_d = 5$, so each flag costs 5 points, flat.
 
-**Why squared.** Kinetic energy goes as $v^2$, and the risk of a *fatal* outcome
-rises faster than that — roughly to the fourth power of impact speed in the
-pedestrian literature. Linear penalties would say 20 mph over is exactly twice as
-bad as 10 over. Squaring says it is four times as bad, which is much closer to
-the truth and matches how people actually think about it.
+Not derived from the trace. While a driver has audio alerts on, DriveSafe reads
+the microphone's level meter; noise that stays above the threshold for a
+sustained window raises one alert, rate-limited to one a minute. $N_d$ is how
+many fired.
 
-With $v_{\text{ref}} = 5$ mph, a whole drive held at 5 mph over gives $P_s = 1$
-and costs $W_s = 10$ points. Held at 10 over, $f_s = 4$, costing 40. Held at
-15 over, $f_s = 9$, costing 90 — a score of 10. That is the intended curve:
-mild speeding is a nudge, serious speeding is most of your score.
+**Counted flat, not rated.** The monitor already rate-limits itself, so a flag
+is a real, spaced-out event rather than a continuous state. Dividing by drive
+length would just make the same behaviour cost less on a longer trip.
 
-### 2. Cornering — this is where road windiness enters
+**Why it counts at all.** A loud cabin masks sirens and horns, and passenger
+noise is one of the strongest predictors of teen-driver crashes specifically.
+**Why it is capped in practice.** The alert threshold behind it
+(`LOUD_THRESHOLD_DBFS`) is still uncalibrated — see `TODO.md`.
 
-Nico asked whether we can account for how winding a road is. **We can, and
-without any road database at all.**
+---
 
-The trace already contains the road's shape. For three consecutive fixes, the
-change in heading per unit distance approximates the road's curvature:
+## What the numbers actually do
 
-$$
-\kappa_i = \frac{\Delta\theta_i}{\Delta s_i}
-$$
-
-$\Delta\theta$ is the turn angle in radians between the incoming and outgoing
-bearings, $\Delta s$ is the arc length. Curvature is $1/r$ — a 100 m radius bend
-has $\kappa = 0.01\ \text{m}^{-1}$.
-
-Curvature on its own is not dangerous. A winding road driven slowly is fine. What
-matters is the **lateral acceleration** it produces:
-
-$$
-a_{\ell,i} = v_i^{2}\,\kappa_i
-$$
-
-This is the physics of whether a car holds a bend. Tyres on dry asphalt give out
-somewhere around 8–9 m/s²; normal comfortable driving stays under about 3.
-
-$$
-f_\ell = \left(\frac{\max(0,\; a_{\ell,i} - a_{\text{comfort}})}{a_{\text{comfort}}}\right)^{\!2}
-\qquad a_{\text{comfort}} = 3.0\ \text{m/s}^2
-$$
-
-This term is what makes the score *road-aware*. Taking a tight mountain bend at
-40 mph and a motorway curve at 70 mph can produce identical lateral acceleration,
-and both are penalised the same — correctly, because they are the same demand on
-the same tyres. It also catches something the speed term never could: a driver
-who is under the posted limit but still going far too fast for the road they are
-on. On Marin's canyon roads that is the more common failure.
-
-### 3. Harsh braking and acceleration
-
-$$
-f_j = \left(\frac{\max(0,\; |a_{\parallel,i}| - a_{j})}{a_{j}}\right)^{\!2}
-\qquad a_j = 2.8\ \text{m/s}^2
-$$
-
-Longitudinal acceleration from successive speed deltas. Hard braking is the
-classic proxy for following too closely or not reading the road ahead; hard
-acceleration is the classic proxy for aggression. Both are well-established
-telematics signals — it is roughly what insurers' black boxes measure.
-
-**Where the speeds come from matters more than it looks.** They are the speeds
-the OS reports, which it derives from Doppler shift, not from differentiating
-position. A reflection off a building throws a *position* fix tens of metres
-sideways while leaving the Doppler speed untouched, and differentiating that
-position produces an acceleration around 40 m/s² — a figure no car achieves.
-Because this term counts incidents and squares them, one such fix was worth more
-than the entire rest of a drive: simulating a single confident-but-wrong fix on
-an otherwise calm journey scored it **2 out of 100**. Reading the reported speed
-instead scores the same drive 99. Position remains the fallback, since iOS
-reports `-1` for speed often enough to need one, and that path carries a
-plausibility guard that treats anything past 10 m/s² as unknown rather than as
-driving.
-
-### 4. Distraction
-
-$$
-N_{\text{loud}} = \text{count of sustained loud-audio alerts}
-$$
-
-Not derived from the trace. While a driver has audio alerts switched on,
-DriveSafe reads the microphone's level meter; noise that stays above the alert
-threshold for a sustained window raises one alert, rate-limited to one a minute.
-$N_{\text{loud}}$ is how many fired.
-
-**Why it counts at all.** A loud cabin is a documented crash risk factor — it
-masks sirens and horns, and passenger noise is one of the strongest predictors
-of teen-driver crashes specifically. **Why it counts less than the rest.** Noise
-is evidence of a distracting *environment*, not of bad driving, and some of it is
-not the driver's doing. It is weighted below every kinematic term on purpose,
-and it is the one term a driver can switch off entirely by leaving audio alerts
-off — a deliberate trade, since a feature that punishes you for enabling it is a
-feature nobody enables.
-
-### Weights
-
-| Term | Weight | What it means in practice |
-| --- | --- | --- |
-| Speeding | 10 | A whole drive at 5 mph over costs 10 points; at 10 over, 40. Most directly tied to crash severity, and the behaviour a driver fully controls. |
-| Cornering | 20 | A whole drive sustained at 6 m/s² (~0.6 g) lateral costs ~20 points. Weighted high per unit because sustaining that much lateral load is genuinely rare and genuinely dangerous. |
-| Braking | 8 | Five hard stops in a half-hour drive costs ~8 points. Real signal, but sometimes someone else's fault — weighted so a driver is not punished for one good emergency stop. |
-| Distraction | 6 | Each noise flag costs ~6 points on a drive of ten minutes or less, tapering on longer ones (~2 points each on a half-hour drive). Lowest weight of the four: it measures the car's environment rather than the driving, and the alert threshold still needs road-test calibration. |
-
-Verified behaviour from `src/lib/scoring.ts` tests:
+From `npm run simulate`, which runs synthetic traces through the real scorer:
 
 | Drive | Score |
 | --- | --- |
-| 5 min straight at 30 mph, legal | 100 |
-| 2 min on a 100 m-radius bend at 30 mph ($a_\ell = 1.8$) | 100 |
-| Same bend at 55 mph ($a_\ell = 6.0$) | 79 |
-| That same 1 min bend, followed by 10 min of calm driving | 98 |
+| Quiet suburban errand | 100 |
+| City stop-and-go with junction turns | 100 |
+| Motorway cruise at 65 | 100 |
+| Calm drive, GPS misbehaving | 100 |
+| Fast bend and hard stops, never over 80 | **100** |
+| Sustained 85 mph for 10 minutes | 70 |
+| Brief 95 mph blast | 86 |
+| Legal speed, four noise flags | 80 |
 
-The last two lines are the normalisation doing its job: identical bad behaviour,
-scored in proportion to how much of the drive it was.
-
----
-
-## Speed limits: the one piece we do not have yet
-
-The cornering and braking terms need nothing but the trace. The speeding term
-needs $L_i$, the posted limit, and that has to come from somewhere.
-
-### What ships today
-
-`inferSpeedLimit()` derives a limit from observed speed, rounding up to the
-nearest plausible California posted value (25/35/45/55/65). This is deliberately
-**conservative**: because the inferred limit is derived from the driver's own
-speed, it can never invent a low limit and manufacture a speeding penalty out of
-nothing. In practice it detects only egregious speeding, and the cornering term
-carries most of the signal.
-
-This is a stand-in, and it is honest to call it one.
-
-### The real integration: OpenStreetMap
-
-OSM tags roads with `maxspeed`, it is free, and it needs no API key.
-
-1. **Simplify the trace.** Snap the drive to ~100 m segments — a 30-minute drive
-   becomes maybe 40 lookups instead of 1800.
-2. **Query Overpass** for ways near each segment midpoint:
-   ```
-   way(around:25,LAT,LON)[highway][maxspeed];
-   out tags geom;
-   ```
-3. **Pick the way** whose bearing best matches travel direction. This is the step
-   that stops a frontage road from being scored against the motorway beside it.
-4. **Fall back down a ladder** when `maxspeed` is missing (it often is):
-   `maxspeed` → infer from `highway` class (`motorway` 65, `primary` 45,
-   `residential` 25) → conservative default.
-5. **Cache by segment.** Families drive the same roads daily; a small local cache
-   keyed by rounded coordinate collapses almost all repeat lookups.
-
-The seam already exists — `scoreDrive(route, { limitFor })` takes a
-`SpeedLimitProvider`. Adding OSM means writing that one function; the equation
-and every call site stay untouched.
-
-**Trade-offs.** Overpass has no SLA and rate-limits aggressively, so lookups
-should happen once when the drive is saved, never during it. Coverage of
-`maxspeed` in Marin is good on numbered routes and patchy on residential streets
-— which is exactly where the fallback ladder matters. Paid alternatives (HERE,
-TomTom, Google Roads) have better coverage and cost money.
+The fifth row is the trade this model makes, stated plainly.
 
 ---
 
-## Honest limitations
+## What was removed, and why
 
-- **Phone GPS speed is imperfect**, especially under tree cover. Fixes with
-  accuracy worse than 30 m are dropped, and curvature is only computed above
-  4.5 mph where heading is meaningful.
-- **The scoring has been simulated, not driven.** `npm run simulate` runs
-  synthetic traces — a suburban errand, town stop-and-go, a motorway cruise,
-  deliberately reckless driving, sustained speeding, and a calm drive with GPS
-  glitches — through the real scorer. Careful driving scores 100, the reckless
-  trace scores in the 50s, sustained speeding scores 0. Synthetic GPS is far
-  cleaner than the real thing, so this proves the maths rather than the product.
-- **We cannot tell who was driving.** A passenger's phone records the same trip.
-  Handling that properly needs Bluetooth-to-car pairing or motion classification.
-- **The distraction threshold is uncalibrated.** The alert fires above −12 dBFS
-  sustained for 1.5 s, which is a starting guess. Microphone sensitivity varies
-  enormously between phones and mounting positions, so the same conversation can
-  read very differently in two cars. Until a road test pins this down, the
-  distraction term is the least trustworthy of the four — which is part of why
-  it carries the lowest weight.
-- **Distraction is the one penalty that survives a thin trace.** Everything else
-  needs 30 s of usable GPS before it will score at all; noise flags apply even
-  without it, because a stationary car with the stereo at full volume produces
-  almost no trace and would otherwise score a clean 100.
-- **Context is invisible.** Braking hard because a child stepped out is scored
-  the same as braking hard from tailgating. This is why braking is weighted
-  lowest, and why the app shows *events* next to the number — the score starts a
-  conversation, it does not end one.
-- **A short drive is not scored.** Under 30 seconds of usable trace returns 100
-  rather than a number invented from three noisy points.
+Earlier versions also scored **cornering** (lateral acceleration from the
+curvature of the GPS trace) and **harsh braking/acceleration** (longitudinal
+acceleration between fixes). Both are gone.
+
+**They could not be verified.** Cornering asks "was that too fast for this
+bend", which cannot be answered without knowing the bend. A 25 mph turn is
+reckless on a wet mountain road and unremarkable in a car park, and the trace
+cannot tell them apart.
+
+**They punished ordinary driving under bad GPS.** Both are second-order
+quantities — differences of differences — so every error in the trace is
+amplified. Simulation put a single bad fix at 98 penalty points. Some of that
+was fixable, but it showed how narrow the margin was between "detects hard
+braking" and "detects a tunnel".
+
+**They were uncalibratable in the time available.** The thresholds (3.0 m/s²
+lateral, 2.8 m/s² longitudinal) were educated guesses. Turning a guess into a
+number needs many real drives by many drivers, which this project does not have.
+
+**And they made the score unexplainable.** A teenager who does not understand
+why they lost points does not drive differently; they conclude the app is
+broken. "You did 85" and "it got loud in here" are things a driver can argue
+with, act on, and check.
+
+The code is in the git history if the evidence ever justifies bringing it back.
 
 ---
 
-## Worked example
+## Real speed limits: the upgrade that matters
 
-A 20-minute drive (1200 s). The driver spends 60 s at 12 mph over the limit,
-takes one bend at $a_\ell = 5.4\ \text{m/s}^2$ for 8 s, and brakes hard three
-times at $4.5\ \text{m/s}^2$.
+Every limitation above collapses into one: the app does not know what road it is
+on. `SpeedLimitProvider` is the seam — a function from coordinate to limit.
+Supply one and every drive is scored against the road it was actually on, with
+no other change anywhere in the app.
 
-**Speeding.** Excess ratio $= 12/5 = 2.4$, so $f_s = 5.76$ during those 60 s.
+The options, honestly compared:
 
-$$P_s = \frac{60 \times 5.76}{1200} = 0.29 \quad\Rightarrow\quad 10 \times 0.29 = 2.9\ \text{points}$$
+| Source | Cost | Coverage | Catch |
+| --- | --- | --- | --- |
+| **OpenStreetMap / Overpass** | Free, no key | `maxspeed` good on numbered routes, patchy on residential | No SLA, rate-limited, needs a fallback ladder |
+| **Mapbox** | Free to 100k requests/month | Good | Needs a token and a billing account |
+| **HERE** | Free to ~1k requests/day | Best of the three | Needs a token; the daily cap is tight |
+| **Google Roads** | Paid only | Good | Speed limits need an Asset Tracking licence — effectively out of reach |
 
-**Cornering.** Excess $= (5.4-3.0)/3.0 = 0.8$, so $f_\ell = 0.64$ for 8 s.
+**Overpass is the right first move**, and one request per drive is enough: fetch
+every way carrying a `maxspeed` inside the drive's bounding box when the drive
+ends, then match each point to the nearest one. That is a single query for a
+whole journey, not one per GPS fix, which keeps it inside what a free endpoint
+will tolerate.
 
-$$P_\ell = \frac{8 \times 0.64}{1200} = 0.0043 \quad\Rightarrow\quad 20 \times 0.0043 = 0.09\ \text{points}$$
-
-**Braking.** Each stop: $((4.5-2.8)/2.8)^2 = 0.37$. Three of them in 1200 s,
-which is two ten-minute windows:
-
-$$P_j = \frac{3 \times 0.37}{2} = 0.55 \quad\Rightarrow\quad 8 \times 0.55 = 4.4\ \text{points}$$
-
-**Score:** $100 - (2.9 + 0.09 + 4.4) \approx 93$.
-
-That reads correctly: a mostly-fine drive with a bit of speeding and some heavy
-braking. Note how the single quick corner barely registers — it was 8 seconds out
-of 20 minutes — while the three hard stops matter more, because incidents are
-counted rather than averaged away. Getting that asymmetry right is the whole
-reason the three terms are normalised differently.
+Where `maxspeed` is missing — and on residential streets it often is — fall back
+down a ladder: `maxspeed` → infer from the `highway` class (`motorway` 65,
+`primary` 45, `residential` 25) → the 80 mph absolute. Never invent a *lower*
+limit than the evidence supports, because that manufactures a speeding penalty
+out of legal driving, which is the one failure this model cannot afford.
