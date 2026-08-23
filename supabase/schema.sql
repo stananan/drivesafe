@@ -45,6 +45,21 @@ begin
   end if;
 end $$;
 
+-- Cornering had no type of its own, so the scorer filed those events under
+-- 'speeding' — a bend taken too fast showed up in the app labelled "Speeding"
+-- with a detail line that talked about a bend.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_enum e
+    join pg_type t on t.oid = e.enumtypid
+    where t.typname = 'drive_event_type' and e.enumlabel = 'harsh_corner'
+  ) then
+    alter type public.drive_event_type add value 'harsh_corner';
+  end if;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- Tables
 -- ---------------------------------------------------------------------------

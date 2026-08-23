@@ -134,6 +134,19 @@ classic proxy for following too closely or not reading the road ahead; hard
 acceleration is the classic proxy for aggression. Both are well-established
 telematics signals — it is roughly what insurers' black boxes measure.
 
+**Where the speeds come from matters more than it looks.** They are the speeds
+the OS reports, which it derives from Doppler shift, not from differentiating
+position. A reflection off a building throws a *position* fix tens of metres
+sideways while leaving the Doppler speed untouched, and differentiating that
+position produces an acceleration around 40 m/s² — a figure no car achieves.
+Because this term counts incidents and squares them, one such fix was worth more
+than the entire rest of a drive: simulating a single confident-but-wrong fix on
+an otherwise calm journey scored it **2 out of 100**. Reading the reported speed
+instead scores the same drive 99. Position remains the fallback, since iOS
+reports `-1` for speed often enough to need one, and that path carries a
+plausibility guard that treats anything past 10 m/s² as unknown rather than as
+driving.
+
 ### 4. Distraction
 
 $$
@@ -229,6 +242,12 @@ TomTom, Google Roads) have better coverage and cost money.
 - **Phone GPS speed is imperfect**, especially under tree cover. Fixes with
   accuracy worse than 30 m are dropped, and curvature is only computed above
   4.5 mph where heading is meaningful.
+- **The scoring has been simulated, not driven.** `npm run simulate` runs
+  synthetic traces — a suburban errand, town stop-and-go, a motorway cruise,
+  deliberately reckless driving, sustained speeding, and a calm drive with GPS
+  glitches — through the real scorer. Careful driving scores 100, the reckless
+  trace scores in the 50s, sustained speeding scores 0. Synthetic GPS is far
+  cleaner than the real thing, so this proves the maths rather than the product.
 - **We cannot tell who was driving.** A passenger's phone records the same trip.
   Handling that properly needs Bluetooth-to-car pairing or motion classification.
 - **The distraction threshold is uncalibrated.** The alert fires above −12 dBFS

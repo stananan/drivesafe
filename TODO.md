@@ -52,6 +52,30 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
 - [ ] Decide whether the driver should be able to end a drive from a locked
   phone, or whether the screen staying on is acceptable for now.
 
+## The first road test
+
+Everything below has only ever run on a stationary phone. `npm run simulate`
+covers the scoring maths against synthetic traces; nothing covers the parts that
+need a moving car. In rough order of what would waste the trip if it were
+broken:
+
+- [ ] **Does a drive record at all?** Distance climbing, speed showing, the
+  route sketch growing on the drive screen.
+- [ ] **Does the parent see it live?** Watch pill within a couple of seconds of
+  Start, position moving, duration ticking.
+- [ ] **Does the score come out sane?** A careful drive should land near 100. If
+  ordinary driving scores badly, capture the drive id — the trace is in
+  `drive_points` and can be replayed through `scoreDrive` offline.
+- [ ] **Calibrate the noise threshold.** The one number that cannot be guessed
+  from a bedroom. See the road-test entry above.
+- [ ] **Does the dashcam survive a real drive?** Battery, heat, and whether the
+  phone will record video with sound while the loudness monitor holds the
+  microphone. The dashcam card says so on screen if it will not.
+- [ ] **Does ending a drive in a dead zone lose it?** Known gap, no offline
+  queue. Worth confirming how bad it is before deciding whether to build one.
+- [ ] Mount the phone somewhere it can see the road. The dashcam is pointless
+  filming a lap.
+
 ## Known gaps in what is built
 
 - [ ] **Recording is foreground-only.** `use-drive-tracker.ts` uses

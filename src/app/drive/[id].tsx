@@ -22,6 +22,7 @@ const EVENT_LABELS: Record<DriveEvent['type'], string> = {
   speeding: 'Speeding',
   hard_brake: 'Hard brake',
   rapid_accel: 'Rapid acceleration',
+  harsh_corner: 'Fast through a bend',
   phone_distraction: 'Phone distraction',
   loud_audio: 'Loud in the car',
 };
