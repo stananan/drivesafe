@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, StyleSheet, View } from 'react-native';
 
 import { AudioLevelGraph } from '@/components/audio-level-graph';
-import { RoutePreview } from '@/components/route-preview';
+import { DriveRouteMap } from '@/components/drive-route-map';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -61,7 +61,11 @@ export default function DriveScreen() {
   const [lastDriveSummary, setLastDriveSummary] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [driveId, setDriveId] = useState<string | null>(null);
-  const [loudAlert, setLoudAlert] = useState<{ at: number; level: number } | null>(null);
+  const [loudAlert, setLoudAlert] = useState<{
+    at: number;
+    level: number;
+    isScream: boolean;
+  } | null>(null);
 
   // Counted here rather than read back from the database so a failed event
   // insert cannot quietly erase the score penalty.
@@ -172,14 +176,16 @@ export default function DriveScreen() {
   // GPS fix but does need the current closure when it fires.
   const stopRef = useRef<(options?: { silent?: boolean }) => Promise<void>>(async () => {});
 
-  const handleLoud = useCallback((level: number) => {
+  const handleLoud = useCallback((level: number, isScream: boolean) => {
     const at = Date.now();
     const { tracker: current, driveId: id, profile: who } = latest.current;
 
-    setLoudAlert({ at, level });
+    setLoudAlert({ at, level, isScream });
     loudCount.current += 1;
 
-    const detail = `Cabin noise ${describeLevel(level)} — ${Math.round(level)} dBFS`;
+    const detail = isScream
+      ? `Shouting or a scream — ${Math.round(level)} dBFS`
+      : `Cabin noise ${describeLevel(level)} — ${Math.round(level)} dBFS`;
 
     if (id) {
       void logDriveEvent({
@@ -194,15 +200,18 @@ export default function DriveScreen() {
       });
     }
 
-    // The dashcam exists for moments like this one, so it does not wait to be
-    // asked. Saving is best-effort: the warning and the event matter more.
-    void keepClipRef.current('loud_audio').catch(() => {});
+    // Only the louder tier keeps footage. A clip for every raised stereo would
+    // fill the storage tier in an afternoon and bury the moments that matter;
+    // a scream is the case the dashcam exists for.
+    if (isScream) void keepClipRef.current('loud_audio').catch(() => {});
 
     if (who?.familyId) {
       void notifyFamilyParents({
         familyId: who.familyId,
         title: `You should call ${who.username}`,
-        body: 'It has got loud in the car while they are driving.',
+        body: isScream
+          ? 'DriveSafe heard shouting in the car and kept a clip.'
+          : 'It has got loud in the car while they are driving.',
         data: { driveId: id, type: 'loud_audio' },
       });
     }
@@ -424,6 +433,7 @@ export default function DriveScreen() {
           <ThemedText type="small" style={{ color: theme.onTint }}>
             It got {describeLevel(loudAlert.level)} in here. Loud cabins make it easy to miss a
             siren — your family has been told.
+            {loudAlert.isScream ? ' The dashcam kept a clip of it.' : ''}
           </ThemedText>
         </View>
       ) : null}
@@ -564,13 +574,7 @@ export default function DriveScreen() {
 
       {isRecording ? (
         <Card title="Live route" meta={`${tracker.pointCount} points`}>
-          <RoutePreview
-            route={tracker.route}
-            caption={
-              tracker.route.length < 2 ? 'Route builds as you move' : `${tracker.pointCount} points`
-            }
-            height={160}
-          />
+          <DriveRouteMap route={tracker.route} height={200} follow />
           {tracker.point ? (
             <ThemedText type="small" themeColor="textSecondary">
               {tracker.point.lat.toFixed(5)}, {tracker.point.lon.toFixed(5)}

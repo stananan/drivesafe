@@ -36,10 +36,24 @@ const MONITOR_RECORDING_OPTIONS: RecordingOptions = {
 
 /**
  * Level meters report dBFS: 0 is the loudest the microphone can encode and
- * roughly -160 is silence. Normal conversation in a moving car tends to sit
- * well below this; sustained noise above it is the thing worth interrupting for.
+ * roughly -160 is silence.
+ *
+ * Raised from -12 after the first road test, where wind and road noise alone
+ * were enough to trip it. A moving car is not a quiet room, and a threshold set
+ * for one fires constantly in the other — which trains a driver to ignore the
+ * warning, at which point the feature is worse than absent.
  */
-export const LOUD_THRESHOLD_DBFS = -12;
+export const LOUD_THRESHOLD_DBFS = -6;
+
+/**
+ * The second tier: a shout, a scream, a genuine commotion — loud enough that it
+ * is worth keeping the footage rather than only noting that it happened.
+ *
+ * Well above the ordinary threshold on purpose. Music and conversation should
+ * never reach it, because a dashcam that saves a clip every time the stereo goes
+ * up fills a free storage tier in an afternoon.
+ */
+export const SCREAM_THRESHOLD_DBFS = -2;
 
 /**
  * The quiet end of the graph. Meters bottom out near -160 in true silence, which
@@ -48,8 +62,12 @@ export const LOUD_THRESHOLD_DBFS = -12;
  */
 export const QUIET_FLOOR_DBFS = -60;
 
-/** A car door or a pothole spikes the meter. Only sustained noise counts. */
-const SUSTAIN_MS = 1_500;
+/**
+ * A car door, a pothole, or a gust past the microphone spikes the meter. Only
+ * sustained noise counts, and the window widened after the road test for the
+ * same reason the threshold rose.
+ */
+const SUSTAIN_MS = 2_500;
 
 /** One alert a minute at most — a nagging app gets muted, and then it is useless. */
 const COOLDOWN_MS = 60_000;
@@ -75,8 +93,11 @@ export function useAudioMonitor({
   onLoud,
 }: {
   enabled: boolean;
-  /** Called with the offending level once noise has been sustained. */
-  onLoud: (level: number) => void;
+  /**
+   * Called once noise has been sustained. `isScream` marks the louder tier —
+   * the caller uses it to decide whether this is worth keeping footage of.
+   */
+  onLoud: (level: number, isScream: boolean) => void;
 }): AudioMonitor {
   const recorder = useAudioRecorder(MONITOR_RECORDING_OPTIONS);
 
@@ -184,7 +205,7 @@ export function useAudioMonitor({
           if (now - loudSince >= SUSTAIN_MS && now - lastAlertAt >= COOLDOWN_MS) {
             lastAlertAt = now;
             loudSince = null;
-            onLoudRef.current(metering);
+            onLoudRef.current(metering, metering >= SCREAM_THRESHOLD_DBFS);
           }
         }, SAMPLE_INTERVAL_MS);
       } catch (error) {
@@ -210,7 +231,7 @@ export function useAudioMonitor({
 
 /** Turns a dBFS reading into something a teenager would actually parse. */
 export function describeLevel(level: number): string {
-  if (level >= -6) return 'very loud';
+  if (level >= SCREAM_THRESHOLD_DBFS) return 'very loud';
   if (level >= LOUD_THRESHOLD_DBFS) return 'loud';
   return 'normal';
 }
