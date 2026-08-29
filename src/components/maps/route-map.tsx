@@ -5,7 +5,7 @@ import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import type { DrivePoint } from '@/types/drive';
+import type { RouteMapProps } from '@/components/maps/types';
 
 /**
  * A drive drawn on real map tiles, finished or in progress.
@@ -18,18 +18,12 @@ import type { DrivePoint } from '@/types/drive';
  * county rather than the road they are on; following keeps the view at street
  * level and moves it along instead.
  */
-export function DriveRouteMap({
+export function RouteMap({
   route,
   height = 220,
   interactive = false,
   follow = false,
-}: {
-  route: DrivePoint[];
-  height?: number;
-  interactive?: boolean;
-  /** Track the newest fix rather than framing the whole route. */
-  follow?: boolean;
-}) {
+}: RouteMapProps) {
   const theme = useTheme();
   const mapRef = useRef<MapView | null>(null);
 

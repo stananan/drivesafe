@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, StyleSheet, View } from 'react-native';
 
 import { AudioLevelGraph } from '@/components/audio-level-graph';
-import { DriveRouteMap } from '@/components/drive-route-map';
+import { RouteMap } from '@/components/maps/route-map';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -574,7 +574,7 @@ export default function DriveScreen() {
 
       {isRecording ? (
         <Card title="Live route" meta={`${tracker.pointCount} points`}>
-          <DriveRouteMap route={tracker.route} height={200} follow />
+          <RouteMap route={tracker.route} height={200} follow />
           {tracker.point ? (
             <ThemedText type="small" themeColor="textSecondary">
               {tracker.point.lat.toFixed(5)}, {tracker.point.lon.toFixed(5)}

@@ -9,21 +9,21 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
 
 ## What to do next, in order
 
-The app is feature-complete enough to submit. What it has never been is *driven*.
-Everything below is ordered so that the thing most likely to invalidate the rest
-comes first.
+The app has now been driven, and it worked. That changes what matters: the
+question is no longer "does any of this function" but "is it good enough to
+submit".
 
-**1. Drive it. This week, before anything else.**
-Nothing further is worth building until one real journey works end to end. The
-checklist is under [The first road test](#the-first-road-test). Bring a second
-phone signed in as the parent, and write down the drive id — if the score comes
-out wrong, the trace is in `drive_points` and can be replayed offline instead of
-guessed at.
+**1. Drive it again, with the fixes in.**
+The first drive produced five changes — a real live map, calmer noise
+thresholds, screams keeping clips, and a padding fix. All of them need seeing in
+a car. The noise thresholds especially: they moved on the strength of one drive,
+and the failure mode has flipped from firing constantly to possibly never
+firing at all.
 
-**2. Calibrate the noise threshold.**
-Noise is now one of only two things that can cost points, so if the threshold
-never fires, every drive scores 100 and the score means nothing. This is the one
-number that cannot be worked out anywhere but inside a car.
+**2. Try the parent dashboard in a browser while that happens.**
+It compiles and the maps have browser implementations, but no parent has watched
+a live drive from a laptop yet. `npm run web`, sign in as the parent, have the
+driver set off. See `docs/web-dashboard.md`.
 
 **3. Decide what the submission actually is.**
 The Congressional App Challenge wants a demo video and source code. It does not
@@ -32,7 +32,8 @@ days of review — buys nothing the judges asked for. Consider deliberately not
 doing it before the deadline, and spending that time on the demo instead. The
 blockers are already cleared if you change your mind.
 
-**4. Fix whatever the road test breaks.** Reserve time for this; something will.
+**4. Fix whatever that turns up.** Reserve time; the first drive found five
+things and it went *well*.
 
 **5. Then, and only then, the known gaps.**
 In the order they would embarrass a demo: the screen has to stay on for a drive
@@ -71,10 +72,13 @@ find. Put a reminder somewhere.
 
 ## Before the first real road test
 
-- [ ] **Calibrate the audio thresholds.** Now carries more weight than before:
-  noise is one of only two things that can cost points, so a threshold that
-  never fires makes the score a constant 100. `LOUD_THRESHOLD_DBFS = -12`,
-  `SUSTAIN_MS = 1500`, and `COOLDOWN_MS = 60000` in
+- [ ] **Re-check the audio thresholds on a second drive.** The first road test
+  had them firing on wind and road noise, so the threshold moved from -12 to -6
+  dBFS and the sustain window from 1.5 s to 2.5 s. That is one data point, not a
+  calibration — the risk now is the opposite one, where nothing ever fires and
+  every drive scores 100. Noise is one of only two things that can cost points.
+  `LOUD_THRESHOLD_DBFS`, `SCREAM_THRESHOLD_DBFS`, `SUSTAIN_MS` and
+  `COOLDOWN_MS` in
   `src/lib/use-audio-monitor.ts` are guesses. Both the drive screen and the
   parent dashboard draw the level graph with the alert line on it: sit in the
   car, watch where normal conversation, the stereo, and actual shouting land
@@ -93,23 +97,22 @@ find. Put a reminder somewhere.
 - [ ] Decide whether the driver should be able to end a drive from a locked
   phone, or whether the screen staying on is acceptable for now.
 
-## The first road test
+## Road testing
 
-Everything below has only ever run on a stationary phone. `npm run simulate`
-covers the scoring maths against synthetic traces; nothing covers the parts that
-need a moving car. In rough order of what would waste the trip if it were
-broken:
+The first drive went well. Recording, the live view and the parent's side all
+worked; what it turned up was five rough edges, all since fixed.
 
-- [ ] **Does a drive record at all?** Distance climbing, speed showing, the
-  route sketch growing on the drive screen.
-- [ ] **Does the parent see it live?** Watch pill within a couple of seconds of
-  Start, position moving, duration ticking.
-- [ ] **Does the score come out sane?** A careful drive should land near 100. If
-  ordinary driving scores badly, capture the drive id — the trace is in
-  `drive_points` and can be replayed through `scoreDrive` offline.
-- [ ] **Calibrate the noise threshold.** The one number that cannot be guessed
-  from a bedroom. See the road-test entry above.
-- [ ] **Does the dashcam survive a real drive?** Battery, heat, and whether the
+- [x] A drive records at all.
+- [x] The parent sees it live.
+- [x] Noise detection fires — too readily, on wind and road noise. Thresholds
+  raised.
+- [ ] **Do the raised thresholds still fire when they should?** The risk has
+  flipped: -6 dBFS sustained for 2.5 s might now be too deaf. Shout in the car
+  and check something happens.
+- [ ] **Does a scream actually keep a clip?** New behaviour, never seen work.
+- [ ] **Does the live map follow properly at speed?** It replaced the dot
+  sketch and has only been seen standing still.
+- [ ] **Does the dashcam survive a long drive?** Battery, heat, and whether the
   phone will record video with sound while the loudness monitor holds the
   microphone. The dashcam card says so on screen if it will not.
 - [ ] **Does ending a drive in a dead zone lose it?** Known gap, no offline

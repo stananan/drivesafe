@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { AudioLevelGraph } from '@/components/audio-level-graph';
 import { ClipPlayer } from '@/components/clip-player';
-import { DriveRouteMap } from '@/components/drive-route-map';
+import { RouteMap } from '@/components/maps/route-map';
 import { ThemedText } from '@/components/themed-text';
 import { Card } from '@/components/ui/card';
 import { QueryState } from '@/components/ui/query-state';
@@ -51,7 +51,7 @@ export default function DriveDetailScreen() {
   return (
     <Screen title={formatWhen(drive.startedAt)} subtitle={`${drive.driverName}'s drive`}>
       <Card>
-        <DriveRouteMap route={drive.route} height={240} />
+        <RouteMap route={drive.route} height={240} />
         <StatRow>
           <Stat label="Distance" value={formatMiles(drive.distanceMeters)} unit="mi" />
           <Stat label="Duration" value={formatDuration(duration)} />
