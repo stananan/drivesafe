@@ -18,6 +18,11 @@ export type Profile = {
   dashcamEnabled: boolean;
   /** Whether this person broadcasts their position to the family. */
   locationSharing: boolean;
+  /**
+   * True once this account has ever been in a family. Distinguishes an
+   * abandoned sign-up from an account that has since left one.
+   */
+  everJoinedFamily: boolean;
 };
 
 /** Why a dashcam clip was kept instead of being overwritten. */

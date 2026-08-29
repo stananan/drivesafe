@@ -17,7 +17,11 @@ export default function SignUpScreen() {
   const router = useRouter();
   const { signUp } = useSession();
 
-  const [role, setRole] = useState<Role>('child');
+  // The browser is the parent's dashboard. A driver account made here would
+  // land on a screen telling them to use their phone, so the choice is not
+  // offered rather than offered and then refused.
+  const isWeb = Platform.OS === 'web';
+  const [role, setRole] = useState<Role>(isWeb ? 'parent' : 'child');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -74,28 +78,32 @@ export default function SignUpScreen() {
           <View style={styles.hero}>
             <ThemedText type="subtitle">Create your account</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              Parents create a family. Drivers join it with the family code.
+              {isWeb
+                ? 'This dashboard is for parents. Drivers sign up in the DriveSafe app on their phone, where the recording happens.'
+                : 'Parents create a family. Drivers join it with the family code.'}
             </ThemedText>
           </View>
 
           <View style={styles.form}>
-            <View style={styles.roleGroup}>
-              <ThemedText type="smallBold" themeColor="textSecondary">
-                I AM A
-              </ThemedText>
-              <View style={styles.roleRow}>
-                <RoleChip
-                  label="Driver"
-                  selected={role === 'child'}
-                  onPress={() => setRole('child')}
-                />
-                <RoleChip
-                  label="Parent"
-                  selected={role === 'parent'}
-                  onPress={() => setRole('parent')}
-                />
+            {isWeb ? null : (
+              <View style={styles.roleGroup}>
+                <ThemedText type="smallBold" themeColor="textSecondary">
+                  I AM A
+                </ThemedText>
+                <View style={styles.roleRow}>
+                  <RoleChip
+                    label="Driver"
+                    selected={role === 'child'}
+                    onPress={() => setRole('child')}
+                  />
+                  <RoleChip
+                    label="Parent"
+                    selected={role === 'parent'}
+                    onPress={() => setRole('parent')}
+                  />
+                </View>
               </View>
-            </View>
+            )}
 
             <Field
               label="USERNAME"

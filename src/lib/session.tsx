@@ -66,6 +66,7 @@ type ProfileRow = {
   audio_alerts_enabled: boolean;
   dashcam_enabled: boolean;
   location_sharing: boolean;
+  ever_joined_family: boolean;
 };
 
 type FamilyRow = {
@@ -84,6 +85,7 @@ function toProfile(row: ProfileRow): Profile {
     audioAlertsEnabled: row.audio_alerts_enabled,
     dashcamEnabled: row.dashcam_enabled,
     locationSharing: row.location_sharing,
+    everJoinedFamily: row.ever_joined_family,
   };
 }
 
@@ -124,7 +126,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const { data: profileRow, error } = await supabase
       .from('profiles')
       .select(
-        'id, username, role, family_id, audio_alerts_enabled, dashcam_enabled, location_sharing'
+        'id, username, role, family_id, audio_alerts_enabled, dashcam_enabled, location_sharing, ever_joined_family'
       )
       .eq('id', userId)
       .maybeSingle<ProfileRow>();
