@@ -1,10 +1,10 @@
 import * as Location from 'expo-location';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
-import MapView, { Marker, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PinsMap } from '@/components/maps/pins-map';
 import { ThemedText } from '@/components/themed-text';
 import { BottomTabInset, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -35,13 +35,12 @@ export function FamilyMap() {
   const insets = useSafeAreaInsets();
   const { profile, family } = useSession();
 
-  const mapRef = useRef<MapView | null>(null);
   const [locations, setLocations] = useState<FamilyLocation[]>([]);
   const [permission, setPermission] = useState<Location.PermissionStatus | null>(null);
   const [isSharing, setIsSharing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [hasFitted, setHasFitted] = useState(false);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -122,45 +121,11 @@ export function FamilyMap() {
     [locations, profile]
   );
 
-  const initialRegion = useMemo<Region>(() => {
-    const mine = locations.find((entry) => entry.id === profile?.id) ?? locations[0];
-
-    return {
-      // Falls back to Marin County — DriveSafe's home district — so the map is
-      // never a grey void while the first fix lands.
-      latitude: mine?.lat ?? 38.0834,
-      longitude: mine?.lon ?? -122.7633,
-      latitudeDelta: 0.15,
-      longitudeDelta: 0.15,
-    };
-  }, [locations, profile]);
-
-  // Frame everyone once, the first time we have more than one pin.
-  useEffect(() => {
-    if (hasFitted || locations.length === 0 || !mapRef.current) return;
-
-    if (locations.length === 1) {
-      setHasFitted(true);
-      return;
-    }
-
-    mapRef.current.fitToCoordinates(
-      locations.map((entry) => ({ latitude: entry.lat, longitude: entry.lon })),
-      { edgePadding: { top: 120, right: 80, bottom: 220, left: 80 }, animated: true }
-    );
-    setHasFitted(true);
-  }, [locations, hasFitted]);
+  // Framing is PinsMap's job now — it frames everyone on first sight and slides
+  // to whichever pin is focused after that.
 
   function focusOn(entry: FamilyLocation) {
-    mapRef.current?.animateToRegion(
-      {
-        latitude: entry.lat,
-        longitude: entry.lon,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
-      },
-      400
-    );
+    setFocusedId(entry.id);
   }
 
   const denied =
@@ -168,27 +133,18 @@ export function FamilyMap() {
 
   return (
     <View style={styles.root}>
-      <MapView
-        ref={mapRef}
-        style={StyleSheet.absoluteFill}
-        initialRegion={initialRegion}
-        showsUserLocation={permission === Location.PermissionStatus.GRANTED}
-        showsMyLocationButton={false}
-        toolbarEnabled={false}>
-        {locations.map((entry) => {
-          const isMe = entry.id === profile?.id;
-
-          return (
-            <Marker
-              key={entry.id}
-              coordinate={{ latitude: entry.lat, longitude: entry.lon }}
-              title={isMe ? `${entry.username} (you)` : entry.username}
-              description={`Updated ${formatRelative(entry.at)}`}
-              pinColor={isMe ? 'green' : entry.role === 'parent' ? 'purple' : 'red'}
-            />
-          );
-        })}
-      </MapView>
+      <PinsMap
+        fill
+        focusId={focusedId}
+        pins={locations.map((entry) => ({
+          id: entry.id,
+          lat: entry.lat,
+          lon: entry.lon,
+          label: entry.id === profile?.id ? `${entry.username} (you)` : entry.username,
+          isDriving: false,
+          isSelected: entry.id === focusedId,
+        }))}
+      />
 
       <View style={[styles.header, { top: insets.top + Spacing.two }]}>
         <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
