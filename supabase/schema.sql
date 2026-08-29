@@ -101,7 +101,13 @@ alter table public.profiles
   -- the driver's settings.
   add column if not exists audio_alerts_enabled boolean not null default false,
   -- Whether the dashcam records while this driver is on a drive.
-  add column if not exists dashcam_enabled boolean not null default false;
+  add column if not exists dashcam_enabled boolean not null default false,
+  -- Set the first time this account creates or joins a family, and never
+  -- cleared. It distinguishes an abandoned sign-up — someone who made an account
+  -- and walked away before getting a code — from an established account that has
+  -- since left its family. The first is safe to delete on the way out; the second
+  -- has history behind it and must never be.
+  add column if not exists ever_joined_family boolean not null default false;
 
 -- DriveSafe briefly had a "let a parent listen in" consent flag. It was dropped:
 -- the app only ever measures loudness and never captures audio, so there was
@@ -392,7 +398,9 @@ begin
   values (trim(family_name), public.generate_family_code(), auth.uid())
   returning * into new_family;
 
-  update public.profiles set family_id = new_family.id where id = auth.uid();
+  update public.profiles
+  set family_id = new_family.id, ever_joined_family = true
+  where id = auth.uid();
 
   return new_family;
 end $$;
@@ -419,7 +427,9 @@ begin
     raise exception 'family_not_found';
   end if;
 
-  update public.profiles set family_id = target.id where id = auth.uid();
+  update public.profiles
+  set family_id = target.id, ever_joined_family = true
+  where id = auth.uid();
 
   return target;
 end $$;
