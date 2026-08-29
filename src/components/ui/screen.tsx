@@ -53,7 +53,7 @@ export function Screen({ title, subtitle, scroll = true, children, style, ...res
       style={[styles.root, { backgroundColor: theme.background }]}
       contentContainerStyle={[
         styles.scrollContent,
-        { paddingTop: insets.top + Spacing.two, paddingBottom: BottomTabInset + Spacing.five },
+        { paddingTop: insets.top, paddingBottom: BottomTabInset + Spacing.five },
       ]}
       showsVerticalScrollIndicator={false}>
       {body}
@@ -77,6 +77,8 @@ const styles = StyleSheet.create({
   },
   header: {
     gap: Spacing.one,
-    paddingTop: Spacing.two,
+    // The safe-area inset already clears the notch. Anything on top of it was
+    // just a gap between the status bar and the title.
+    paddingTop: 0,
   },
 });
