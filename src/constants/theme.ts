@@ -98,4 +98,10 @@ export const WebHeaderInset = 84;
 
 /** Comfortable reading width for a form. Full width is not it. */
 export const FormWidth = 420;
+
+/**
+ * For screens whose content is pictures rather than prose. Video needs width
+ * more than a paragraph does, and the reading width makes a postage stamp of it.
+ */
+export const WideContentWidth = 1080;
 export const MaxContentWidth = 800;

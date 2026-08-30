@@ -49,7 +49,7 @@ export default function DriveDetailScreen() {
   const duration = drive.endedAt ? drive.endedAt - drive.startedAt : 0;
 
   return (
-    <Screen title={formatWhen(drive.startedAt)} subtitle={`${drive.driverName}'s drive`}>
+    <Screen title={formatWhen(drive.startedAt)} subtitle={`${drive.driverName}'s drive`} wide>
       <Card>
         <RouteMap route={drive.route} height={240} />
         <StatRow>

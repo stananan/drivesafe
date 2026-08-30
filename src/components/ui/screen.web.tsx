@@ -1,7 +1,7 @@
 import { ScrollView, StyleSheet, View, type ViewProps } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { MaxContentWidth, Spacing, WebHeaderInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, WebHeaderInset, WideContentWidth } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type ScreenProps = ViewProps & {
@@ -9,6 +9,11 @@ type ScreenProps = ViewProps & {
   subtitle?: string;
   /** Set false for screens that manage their own layout, like the live drive view. */
   scroll?: boolean;
+  /**
+   * Give the content more room than the reading width — for screens whose
+   * content is pictures rather than prose.
+   */
+  wide?: boolean;
 };
 
 /**
@@ -22,7 +27,15 @@ type ScreenProps = ViewProps & {
  *
  * So the padding moves to the other end, and the title gets room to be a title.
  */
-export function Screen({ title, subtitle, scroll = true, children, style, ...rest }: ScreenProps) {
+export function Screen({
+  title,
+  subtitle,
+  scroll = true,
+  wide = false,
+  children,
+  style,
+  ...rest
+}: ScreenProps) {
   const theme = useTheme();
 
   const header = (
@@ -37,7 +50,7 @@ export function Screen({ title, subtitle, scroll = true, children, style, ...res
   );
 
   const body = (
-    <View style={[styles.body, style]} {...rest}>
+    <View style={[styles.body, wide && styles.bodyWide, style]} {...rest}>
       {header}
       {children}
     </View>
@@ -74,6 +87,9 @@ const styles = StyleSheet.create({
     // No tab bar down here to clear — just enough that the last card is not
     // flush against the bottom of the window.
     paddingBottom: Spacing.six,
+  },
+  bodyWide: {
+    maxWidth: WideContentWidth,
   },
   body: {
     width: '100%',
