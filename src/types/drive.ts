@@ -48,6 +48,8 @@ export type DriveClip = {
     index: number;
     /** Short-lived signed URL, or null when the file could not be signed. */
     url: string | null;
+    /** The same file, asked for as an attachment rather than a stream. */
+    downloadUrl: string | null;
     durationSeconds: number;
     bytes: number;
   }[];
