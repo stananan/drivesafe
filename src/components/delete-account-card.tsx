@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Alert } from 'react-native';
+
 
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { confirmAction, notify } from '@/lib/confirm';
 import { useSession } from '@/lib/session';
 
 /**
@@ -31,15 +32,18 @@ export function DeleteAccountCard() {
     // for the auth screens, so there is nothing left here to put back.
     if (error) {
       setIsDeleting(false);
-      Alert.alert('Could not delete account', error);
+      notify('Could not delete account', error);
     }
   }
 
-  function confirmDelete() {
-    Alert.alert('Delete your account?', `${consequences}\n\nThis cannot be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete forever', style: 'destructive', onPress: () => void runDelete() },
-    ]);
+  async function confirmDelete() {
+    const ok = await confirmAction({
+      title: 'Delete your account?',
+      message: `${consequences}\n\nThis cannot be undone.`,
+      confirmLabel: 'Delete forever',
+    });
+
+    if (ok) await runDelete();
   }
 
   return (
@@ -47,7 +51,12 @@ export function DeleteAccountCard() {
       <ThemedText type="small" themeColor="textSecondary">
         {consequences}
       </ThemedText>
-      <Button label="Delete account" variant="danger" loading={isDeleting} onPress={confirmDelete} />
+      <Button
+        label="Delete account"
+        variant="danger"
+        loading={isDeleting}
+        onPress={() => void confirmDelete()}
+      />
     </Card>
   );
 }

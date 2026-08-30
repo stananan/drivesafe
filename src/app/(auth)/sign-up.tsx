@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
-import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { FormWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/lib/session';
 import type { Role } from '@/types/drive';
@@ -216,7 +216,9 @@ const styles = StyleSheet.create({
   },
   content: {
     width: '100%',
-    maxWidth: MaxContentWidth,
+    // A form is read down, not across. At the page's full width the fields
+    // stretch to a size no one wants to type into.
+    maxWidth: FormWidth,
     flex: 1,
     gap: Spacing.four,
   },

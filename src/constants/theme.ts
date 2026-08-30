@@ -84,4 +84,18 @@ export const Radius = {
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
+
+/**
+ * Height to keep clear at the top of a web screen.
+ *
+ * On phones the tab bar sits at the bottom and the safe-area inset handles the
+ * top. In a browser both of those are wrong: there is no notch, so the inset is
+ * zero, and the tab bar renders as a floating pill at the *top* — so a screen
+ * that reserves space at the bottom leaves its title colliding with the tabs.
+ * Everything on a web screen starts below this.
+ */
+export const WebHeaderInset = 84;
+
+/** Comfortable reading width for a form. Full width is not it. */
+export const FormWidth = 420;
 export const MaxContentWidth = 800;

@@ -2,14 +2,22 @@ import * as Clipboard from 'expo-clipboard';
 import * as Location from 'expo-location';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PinsMap } from '@/components/maps/pins-map';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { ScoreBadge } from '@/components/ui/score-badge';
-import { BottomTabInset, Radius, Spacing } from '@/constants/theme';
+import { BottomTabInset, Radius, Spacing, WebHeaderInset } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { listFamilyDrivers } from '@/lib/drives';
 import { formatRelative } from '@/lib/format';
@@ -32,6 +40,12 @@ export default function ParentLiveScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  // A phone gets a full-bleed map with a sheet pulled over its bottom edge.
+  // A browser window is the wrong shape for that: the map becomes a 1440px wall
+  // and the driver list a strip under it. Side by side, bounded, is what a
+  // dashboard wants.
+  const isWeb = Platform.OS === 'web';
   const { profile, family } = useSession();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -134,8 +148,10 @@ export default function ParentLiveScreen() {
   const noDriversYet = !drivers.isLoading && driverList.length === 0;
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.background }]}>
-      <View style={styles.mapWrap}>
+    <View
+      style={[styles.root, isWeb && styles.rootWeb, { backgroundColor: theme.background }]}>
+      <View style={[styles.page, isWeb && styles.pageWeb]}>
+        <View style={[styles.mapWrap, isWeb && styles.mapWrapWeb]}>
         <PinsMap
           fill
           focusId={selectedId}
@@ -149,19 +165,24 @@ export default function ParentLiveScreen() {
           }))}
         />
 
-        <View style={[styles.mapHeader, { top: insets.top + Spacing.two }]}>
-          <View style={[styles.floatingCard, { backgroundColor: theme.backgroundElement }]}>
-            <ThemedText type="smallBold">{family?.name ?? 'Your family'}</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {drivers.isLoading
-                ? 'Loading…'
-                : located.length === 0
-                  ? 'No live locations yet'
-                  : `${located.length} ${located.length === 1 ? 'driver' : 'drivers'} on the map`}
-            </ThemedText>
+          <View
+            style={[
+              styles.mapHeader,
+              isWeb && styles.mapHeaderWeb,
+              { top: (isWeb ? Spacing.three : insets.top) + Spacing.two },
+            ]}>
+            <View style={[styles.floatingCard, { backgroundColor: theme.backgroundElement }]}>
+              <ThemedText type="smallBold">{family?.name ?? 'Your family'}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {drivers.isLoading
+                  ? 'Loading…'
+                  : located.length === 0
+                    ? 'No live locations yet'
+                    : `${located.length} ${located.length === 1 ? 'driver' : 'drivers'} on the map`}
+              </ThemedText>
+            </View>
           </View>
         </View>
-      </View>
 
       {alert ? (
         <Pressable
@@ -174,7 +195,7 @@ export default function ParentLiveScreen() {
             styles.alertBanner,
             {
               backgroundColor: theme.warning,
-              bottom: BottomTabInset + insets.bottom + Spacing.three,
+              bottom: isWeb ? Spacing.four : BottomTabInset + insets.bottom + Spacing.three,
               opacity: pressed ? 0.9 : 1,
             },
           ]}>
@@ -187,14 +208,19 @@ export default function ParentLiveScreen() {
         </Pressable>
       ) : null}
 
-      <View style={[styles.sheet, { backgroundColor: theme.background }]}>
-        {noDriversYet ? (
+        <View
+          style={[styles.sheet, isWeb && styles.sheetWeb, { backgroundColor: theme.background }]}>
+          {noDriversYet ? (
           <FamilyCodeOnboarding code={family?.code ?? ''} onCopy={() => void copyCode()} />
         ) : (
           <ScrollView
             contentContainerStyle={[
               styles.listContent,
-              { paddingBottom: BottomTabInset + insets.bottom + Spacing.three },
+              {
+                paddingBottom: isWeb
+                  ? Spacing.four
+                  : BottomTabInset + insets.bottom + Spacing.three,
+              },
             ]}
             showsVerticalScrollIndicator={false}>
             <View style={styles.listHeader}>
@@ -223,8 +249,9 @@ export default function ParentLiveScreen() {
                 }}
               />
             ))}
-          </ScrollView>
-        )}
+            </ScrollView>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -335,9 +362,40 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
+  // Two columns inside a bounded, centred page rather than one tall phone.
+  // Full width, so the page background reaches the window edges. The bounded
+  // column lives inside it.
+  rootWeb: {
+    alignItems: 'center',
+    paddingTop: WebHeaderInset,
+    paddingBottom: Spacing.four,
+    paddingHorizontal: Spacing.three,
+  },
+  page: {
+    flex: 1,
+  },
+  pageWeb: {
+    flexDirection: 'row',
+    width: '100%',
+    maxWidth: 1180,
+    gap: Spacing.three,
+  },
+  // Clear of the zoom controls, and sized to its text rather than stretched
+  // across the whole map.
+  mapHeaderWeb: {
+    left: 56,
+    right: undefined,
+    maxWidth: 320,
+  },
   // Upper portion of the screen is the map; the list sheet takes the rest.
   mapWrap: {
     flex: 6,
+  },
+  mapWrapWeb: {
+    flex: 3,
+    borderRadius: Radius.large,
+    overflow: 'hidden',
+    minHeight: 460,
   },
   sheet: {
     flex: 4,
@@ -346,6 +404,15 @@ const styles = StyleSheet.create({
     marginTop: -Radius.large,
     paddingTop: Spacing.three,
     paddingHorizontal: Spacing.three,
+  },
+  // Beside the map, not pulled over it — nothing to overlap.
+  sheetWeb: {
+    flex: 2,
+    maxWidth: 400,
+    marginTop: 0,
+    borderRadius: Radius.large,
+    paddingTop: 0,
+    paddingHorizontal: 0,
   },
   mapHeader: {
     position: 'absolute',
