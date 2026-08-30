@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { ClipPlayer } from '@/components/clip-player';
 import { ThemedText } from '@/components/themed-text';
@@ -12,6 +12,7 @@ import { Stat, StatRow } from '@/components/ui/stat';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { deleteClip, listRecentClips, renameClip } from '@/lib/clips';
+import { confirmAction, notify } from '@/lib/confirm';
 import { formatWhen } from '@/lib/format';
 import { useAsync } from '@/lib/use-async';
 import type { FamilyClip } from '@/types/drive';
@@ -146,37 +147,31 @@ function ClipRow({
       await renameClip(clip.id, next);
       onChanged();
     } catch (error) {
-      Alert.alert('Could not rename', error instanceof Error ? error.message : 'Try again.');
+      notify('Could not rename', error instanceof Error ? error.message : 'Try again.');
     } finally {
       setIsBusy(false);
     }
   }
 
-  function confirmDelete() {
-    Alert.alert(
-      'Delete this clip?',
-      'The video is removed from your family and from storage. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            setIsBusy(true);
+  async function confirmDelete() {
+    const ok = await confirmAction({
+      title: 'Delete this clip?',
+      message: 'The video is removed from your family and from storage. This cannot be undone.',
+      confirmLabel: 'Delete',
+    });
 
-            void deleteClip({ id: clip.id, driveId: clip.driveId, parts: clip.parts })
-              .then(onChanged)
-              .catch((error: unknown) =>
-                Alert.alert(
-                  'Could not delete',
-                  error instanceof Error ? error.message : 'Try again.'
-                )
-              )
-              .finally(() => setIsBusy(false));
-          },
-        },
-      ]
-    );
+    if (!ok) return;
+
+    setIsBusy(true);
+
+    try {
+      await deleteClip({ id: clip.id, driveId: clip.driveId, parts: clip.parts });
+      onChanged();
+    } catch (error) {
+      notify('Could not delete', error instanceof Error ? error.message : 'Try again.');
+    } finally {
+      setIsBusy(false);
+    }
   }
 
 
@@ -243,7 +238,7 @@ function ClipRow({
           label="Delete"
           variant="danger"
           disabled={isBusy}
-          onPress={confirmDelete}
+          onPress={() => void confirmDelete()}
           style={styles.action}
         />
       </View>

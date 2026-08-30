@@ -55,6 +55,31 @@ Anything added to those has to be expressible on both platforms. That constraint
 is why they describe *what to show* rather than handing back a map to command:
 the two libraries have nothing in common imperatively.
 
+## Where phone and browser part ways
+
+The layout was written for phones, and a browser is a different shape. Three
+things needed splitting rather than sharing, each in a `.web.tsx` file so the
+phone is untouched:
+
+**`ui/screen`** — the phone reserves space at the *bottom* for the tab bar and
+leans on the safe-area inset for the top. In a browser both are wrong: there is
+no notch, so the inset is zero, and the tab bar renders as a floating pill at
+the top. Page titles ended up jammed against the window edge with the tabs
+sitting across their subtitles.
+
+**The Live tab** — a full-bleed map with a sheet pulled over its bottom edge is
+right on a phone and wrong at 1440px, where the map becomes a wall and the
+driver list a strip beneath it. On web it is two columns inside a bounded,
+centred page.
+
+**`lib/confirm`** — `Alert.alert` is a silent no-op under react-native-web.
+Not an error, not a fallback: nothing happens. Every confirmation went through
+it, so "Leave family" and "Delete account" were dead buttons on the dashboard.
+The web version uses the browser's own dialogs — unstyled, but modal and real.
+
+The rule this leaves: a layout change made for the phone does not automatically
+suit the browser. Check both, or scope the change.
+
 ## Known rough edges
 
 - **Prerendering is off.** `web.output` is `single` rather than `static`, because
@@ -64,6 +89,10 @@ the two libraries have nothing in common imperatively.
 - **The bundle is around 3 MB.** Everything the phone app imports is in it,
   including the camera and audio code a parent will never reach. Splitting that
   out would be worth doing before this is ever more than a family tool.
-- **It has been built, not driven.** The web build compiles and the maps have
-  browser implementations, but no parent has yet sat in front of it while a real
-  drive happened. That is the next thing to check.
+- **Browser dialogs are unstyled.** Confirmations use `window.confirm`, which
+  looks like the browser rather than the app. A themed modal would be nicer if
+  the dashboard grows more of them.
+- **It has been reviewed, not driven.** The four parent tabs have been walked
+  through at 1440 and 1024 with an account created, a family made and the
+  account deleted again — but no parent has yet watched a real drive from a
+  laptop. That is the next thing to check.
