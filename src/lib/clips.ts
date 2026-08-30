@@ -175,15 +175,43 @@ async function withParts(clips: ClipRow[]): Promise<DriveClip[]> {
     title: clip.title,
     parts: parts
       .filter((part) => part.clip_id === clip.id)
-      .map((part) => ({
-        index: part.part_index,
-        // Null when signing failed — the UI shows the clip as unavailable
-        // rather than handing the player a broken source.
-        url: signedByPath.get(part.storage_path) ?? null,
-        durationSeconds: part.duration_seconds,
-        bytes: part.bytes,
-      })),
+      .map((part) => {
+        const url = signedByPath.get(part.storage_path) ?? null;
+
+        return {
+          index: part.part_index,
+          // Null when signing failed — the UI shows the clip as unavailable
+          // rather than handing the player a broken source.
+          url,
+          // Same URL, asking storage to send it as an attachment. Supabase reads
+          // `download` off a signed URL and sets Content-Disposition from it,
+          // which is what makes a browser save the file rather than navigate to
+          // it — an `<a download>` alone cannot do that cross-origin.
+          downloadUrl: url
+            ? `${url}${url.includes('?') ? '&' : '?'}download=${encodeURIComponent(
+                downloadName(clip, part.part_index)
+              )}`
+            : null,
+          durationSeconds: part.duration_seconds,
+          bytes: part.bytes,
+        };
+      }),
   }));
+}
+
+/** A filename a person would recognise in their downloads folder. */
+function downloadName(clip: ClipRow, partIndex: number): string {
+  const when = new Date(clip.recorded_at)
+    .toISOString()
+    .slice(0, 16)
+    .replace('T', '-')
+    .replace(':', '');
+
+  const stem = clip.title
+    ? clip.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    : 'drivesafe';
+
+  return `${stem}-${when}${partIndex > 0 ? `-part${partIndex + 1}` : ''}.mp4`;
 }
 
 /** Clips for one drive, newest first, with playable URLs. */
