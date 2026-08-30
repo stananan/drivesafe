@@ -10,6 +10,11 @@ type ScreenProps = ViewProps & {
   subtitle?: string;
   /** Set false for screens that manage their own layout, like the live drive view. */
   scroll?: boolean;
+  /**
+   * Give the content more room than the reading width. Only does anything in a
+   * browser — a phone has no spare width to give.
+   */
+  wide?: boolean;
 };
 
 /**
@@ -17,7 +22,17 @@ type ScreenProps = ViewProps & {
  * that clears the tab bar. Every tab uses this so the two interfaces feel like
  * one app.
  */
-export function Screen({ title, subtitle, scroll = true, children, style, ...rest }: ScreenProps) {
+export function Screen({
+  title,
+  subtitle,
+  scroll = true,
+  // Accepted so both platforms share one signature; a phone is already as wide
+  // as it gets.
+  wide: _wide,
+  children,
+  style,
+  ...rest
+}: ScreenProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 

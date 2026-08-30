@@ -53,7 +53,10 @@ export function ClipPlayer({ clip }: { clip: DriveClip }) {
         <VideoView
           player={player}
           style={StyleSheet.absoluteFill}
-          contentFit="cover"
+          // `cover` filled the box by cropping, which on a wide card threw away
+          // most of the frame — the whole point of a dashcam clip is what is at
+          // the edges of it. `contain` letterboxes instead, so nothing is lost.
+          contentFit="contain"
           nativeControls
           allowsFullscreen
         />
@@ -83,7 +86,10 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   video: {
-    height: 200,
+    // Sized by the card rather than pinned to 200px. A fixed height made a 4:1
+    // slot out of an 800px-wide card, which is not a shape any video is.
+    width: '100%',
+    aspectRatio: 16 / 9,
     borderRadius: Radius.medium,
     overflow: 'hidden',
     backgroundColor: '#000',

@@ -61,6 +61,7 @@ export function ClipsDashboard({ role }: { role: 'parent' | 'child' }) {
   return (
     <Screen
       title="Clips"
+      wide
       subtitle={
         role === 'parent'
           ? 'Everything your drivers chose to keep, and everything DriveSafe kept for them.'
