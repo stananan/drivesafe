@@ -1,6 +1,12 @@
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Pressable,
+  StyleSheet,
+  View,
+  type GestureResponderEvent,
+  type LayoutChangeEvent,
+} from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
@@ -46,15 +52,22 @@ export function ClipPlayer({ clip }: { clip: DriveClip }) {
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const [trackWidth, setTrackWidth] = useState(0);
+  const trackRef = useRef<View | null>(null);
+  const trackLeft = useRef(0);
 
   // Polled rather than subscribed. The player exposes these as plain properties,
   // and a quarter-second tick is both simpler than wiring several listeners and
   // precise enough to scrub a twenty-second clip.
   useEffect(() => {
     const timer = setInterval(() => {
+      // Both read NaN before the media has loaded its metadata. Letting that
+      // through would put a NaN into the progress bar's width as well as into
+      // any later seek.
+      const finite = (value: number | undefined) => (Number.isFinite(value) ? (value as number) : 0);
+
       setIsPlaying(player.playing);
-      setPosition(player.currentTime ?? 0);
-      setDuration(player.duration ?? 0);
+      setPosition(finite(player.currentTime));
+      setDuration(finite(player.duration));
     }, TICK_MS);
 
     return () => clearInterval(timer);
@@ -82,17 +95,54 @@ export function ClipPlayer({ clip }: { clip: DriveClip }) {
     setIsPlaying(!wasPlaying);
   }
 
-  function seekTo(event: { nativeEvent: { locationX: number } }) {
-    if (trackWidth <= 0 || duration <= 0) return;
+  /**
+   * Where along the bar the press landed.
+   *
+   * The three sources are not interchangeable and not all present everywhere.
+   * `locationX` is the React Native one and is undefined under react-native-web,
+   * which is what made this divide by nothing and hand the player a NaN —
+   * setting currentTime to a non-finite number throws outright. `offsetX` is the
+   * DOM equivalent. `pageX` exists on both but is measured from the window, so
+   * it only means something once the bar's own position is subtracted.
+   */
+  function pressOffset(event: GestureResponderEvent): number | null {
+    const native = event.nativeEvent as unknown as {
+      locationX?: number;
+      offsetX?: number;
+      pageX?: number;
+    };
 
-    const fraction = Math.max(0, Math.min(1, event.nativeEvent.locationX / trackWidth));
+    if (Number.isFinite(native.locationX)) return native.locationX as number;
+    if (Number.isFinite(native.offsetX)) return native.offsetX as number;
+    if (Number.isFinite(native.pageX)) return (native.pageX as number) - trackLeft.current;
 
-    player.currentTime = fraction * duration;
-    setPosition(fraction * duration);
+    return null;
+  }
+
+  function seekTo(event: GestureResponderEvent) {
+    if (trackWidth <= 0 || !Number.isFinite(duration) || duration <= 0) return;
+
+    const offset = pressOffset(event);
+    if (offset === null) return;
+
+    const fraction = Math.max(0, Math.min(1, offset / trackWidth));
+    if (!Number.isFinite(fraction)) return;
+
+    const target = fraction * duration;
+    if (!Number.isFinite(target)) return;
+
+    player.currentTime = target;
+    setPosition(target);
   }
 
   function measureTrack(event: LayoutChangeEvent) {
     setTrackWidth(event.nativeEvent.layout.width);
+
+    // Kept for the pageX fallback, which needs the bar's position in the window
+    // rather than its size.
+    trackRef.current?.measureInWindow((x) => {
+      trackLeft.current = x;
+    });
   }
 
   if (playable.length === 0) {
@@ -137,7 +187,7 @@ export function ClipPlayer({ clip }: { clip: DriveClip }) {
         </Pressable>
 
         <View style={styles.trackColumn}>
-          <Pressable onPress={seekTo} onLayout={measureTrack} style={styles.trackHit}>
+          <Pressable ref={trackRef} onPress={seekTo} onLayout={measureTrack} style={styles.trackHit}>
             <View style={[styles.track, { backgroundColor: theme.backgroundSelected }]}>
               <View
                 style={[
@@ -198,6 +248,11 @@ const styles = StyleSheet.create({
   video: {
     // Sized by the card rather than pinned to 200px. A fixed height made a 4:1
     // slot out of an 800px-wide card, which is not a shape any video is.
+    //
+    // Horizontal on both platforms, deliberately. A phone could show portrait
+    // footage upright and fill more of its screen, but a clip is watched on the
+    // dashboard as often as on the phone, and one shape means a clip looks the
+    // same wherever it is opened. Letterboxing is the price and it is worth it.
     width: '100%',
     aspectRatio: 16 / 9,
     borderRadius: Radius.medium,
