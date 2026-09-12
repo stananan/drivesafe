@@ -1,11 +1,15 @@
 /**
  * DriveSafe design tokens.
  *
- * Light green and white: white ground, pale green surfaces, and one confident
- * green for actions. The safety scale (green / amber / red) is deliberately a
- * *different* green from the brand green so "this drive was safe" never reads as
- * ordinary chrome — the brand green is muted and cool, the safety green is
- * brighter and warmer.
+ * Green on green: a pale green ground, slightly deeper green surfaces, and one
+ * confident green for actions. The ground used to be plain white; tinting it
+ * meant nudging every neutral in the ladder — surfaces, selection, borders — a
+ * step deeper, because a card that used to sit on white no longer reads as
+ * raised when the page behind it is the same colour the card was.
+ *
+ * The safety scale (green / amber / red) is deliberately a *different* green
+ * from the brand green so "this drive was safe" never reads as ordinary chrome —
+ * the brand green is muted and cool, the safety green is brighter and warmer.
  */
 
 import '@/global.css';
@@ -16,11 +20,14 @@ export const Colors = {
   light: {
     text: '#0F1F16',
     textSecondary: '#5A6B60',
-    background: '#FFFFFF',
-    /** Cards and raised surfaces: the palest green that still reads as green. */
-    backgroundElement: '#F1F9F3',
-    backgroundSelected: '#DFF1E4',
-    border: '#CDE6D5',
+    /** The page itself: green enough to notice, pale enough to read on. */
+    background: '#EAF6EE',
+    /** Cards and raised surfaces: a step deeper than the ground beneath them. */
+    backgroundElement: '#DEF0E4',
+    /** Inputs. White stopped being the page colour, so it now means "type here". */
+    backgroundInput: '#FFFFFF',
+    backgroundSelected: '#CDE8D6',
+    border: '#B8DCC4',
     tint: '#2E8B57',
     onTint: '#FFFFFF',
     success: '#1F9D55',
@@ -30,8 +37,10 @@ export const Colors = {
   dark: {
     text: '#ECF6EF',
     textSecondary: '#9DB3A5',
-    background: '#0C1611',
-    backgroundElement: '#152420',
+    /** A shade lighter than it was, to match the light theme going greener. */
+    background: '#12211A',
+    backgroundElement: '#1A2C23',
+    backgroundInput: '#0C1611',
     backgroundSelected: '#1E332B',
     border: '#274236',
     tint: '#4FBE80',
