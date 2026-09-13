@@ -23,6 +23,11 @@ type SessionValue = {
   family: Family | null;
   /** Set when the environment has no Supabase keys at all. */
   configError: string | null;
+  /**
+   * Set when the profile could not be read for a signed-in user. Distinct from
+   * "not loaded yet": something is wrong and waiting will not fix it.
+   */
+  profileError: string | null;
 
   signUp: (input: {
     email: string;
@@ -43,7 +48,7 @@ type SessionValue = {
    * schema mean these are the only profile fields a client can write.
    */
   setPreference: (
-    key: 'audioAlertsEnabled' | 'locationSharing',
+    key: 'audioAlertsEnabled' | 'dashcamEnabled' | 'locationSharing',
     value: boolean
   ) => Promise<{ error: string | null }>;
 
@@ -59,7 +64,9 @@ type ProfileRow = {
   role: Role;
   family_id: string | null;
   audio_alerts_enabled: boolean;
+  dashcam_enabled: boolean;
   location_sharing: boolean;
+  ever_joined_family: boolean;
 };
 
 type FamilyRow = {
@@ -76,7 +83,9 @@ function toProfile(row: ProfileRow): Profile {
     role: row.role,
     familyId: row.family_id,
     audioAlertsEnabled: row.audio_alerts_enabled,
+    dashcamEnabled: row.dashcam_enabled,
     locationSharing: row.location_sharing,
+    everJoinedFamily: row.ever_joined_family,
   };
 }
 
@@ -94,6 +103,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [family, setFamily] = useState<Family | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   const configError = isSupabaseConfigured
     ? null
@@ -115,18 +125,46 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     const { data: profileRow, error } = await supabase
       .from('profiles')
-      .select('id, username, role, family_id, audio_alerts_enabled, location_sharing')
+      .select(
+        'id, username, role, family_id, audio_alerts_enabled, dashcam_enabled, location_sharing, ever_joined_family'
+      )
       .eq('id', userId)
       .maybeSingle<ProfileRow>();
 
     if (token !== loadToken.current) return;
 
-    if (error || !profileRow) {
+    if (error) {
+      // Offline, a policy change, a column the app expects and the database does
+      // not. The session stays — this may well resolve on its own — but the
+      // message is kept so the gate can say something instead of spinning.
       setProfile(null);
       setFamily(null);
+      setProfileError(error.message);
       return;
     }
 
+    if (!profileRow) {
+      // A session that outlived its account: the row is gone but the token on
+      // this phone is still signed and still valid. That happens when the
+      // account was deleted from another device, or when the whole project was
+      // wiped. The gate waits for a profile that will never arrive, so the app
+      // sits on a spinner with no way back to the sign-in screen.
+      //
+      // Clearing the stored token locally is the way out. There is no server
+      // session left to end.
+      setProfile(null);
+      setFamily(null);
+      setSession(null);
+      setProfileError(null);
+
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {
+        // Nothing more to try; the state above already frees the router.
+      });
+
+      return;
+    }
+
+    setProfileError(null);
     setProfile(toProfile(profileRow));
 
     if (!profileRow.family_id) {
@@ -310,8 +348,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const supabase = getSupabase();
       if (!supabase || !session?.user.id) return { error: configError };
 
-      const column =
-        key === 'audioAlertsEnabled' ? 'audio_alerts_enabled' : 'location_sharing';
+      const column = {
+        audioAlertsEnabled: 'audio_alerts_enabled',
+        dashcamEnabled: 'dashcam_enabled',
+        locationSharing: 'location_sharing',
+      }[key];
 
       // Optimistic: the switch should move under the thumb, not after a round
       // trip. A failure below puts it back.
@@ -343,6 +384,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       profile,
       family,
       configError,
+      profileError,
       signUp,
       signIn,
       signOut,
@@ -359,6 +401,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       profile,
       family,
       configError,
+      profileError,
       signUp,
       signIn,
       signOut,

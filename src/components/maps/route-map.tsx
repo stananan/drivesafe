@@ -1,31 +1,64 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import type { DrivePoint } from '@/types/drive';
+import type { RouteMapProps } from '@/components/maps/types';
 
 /**
- * A recorded drive drawn on real map tiles.
+ * A drive drawn on real map tiles, finished or in progress.
  *
  * Non-interactive by default: on the drive detail screen this sits inside a
  * scroll view, and a pannable map there would fight the scroll gesture.
+ *
+ * `follow` is for a drive that is still happening. Framing the whole route
+ * would zoom further out with every mile, until a driver glancing down sees a
+ * county rather than the road they are on; following keeps the view at street
+ * level and moves it along instead.
  */
-export function DriveRouteMap({
+export function RouteMap({
   route,
   height = 220,
   interactive = false,
-}: {
-  route: DrivePoint[];
-  height?: number;
-  interactive?: boolean;
-}) {
+  follow = false,
+}: RouteMapProps) {
   const theme = useTheme();
+  const mapRef = useRef<MapView | null>(null);
+
+  const latest = route.length > 0 ? route[route.length - 1] : null;
+
+  // Slides the view to each new fix. Animating rather than setting `region`
+  // keeps the map from snapping, which at a glance reads as the map breaking.
+  useEffect(() => {
+    if (!follow || !latest || !mapRef.current) return;
+
+    mapRef.current.animateToRegion(
+      {
+        latitude: latest.lat,
+        longitude: latest.lon,
+        latitudeDelta: 0.004,
+        longitudeDelta: 0.004,
+      },
+      800
+    );
+  }, [follow, latest]);
 
   const region = useMemo<Region | null>(() => {
     if (route.length === 0) return null;
+
+    // A drive in progress opens at street level around where it started, and
+    // the effect above takes over from there.
+    if (follow) {
+      const first = route[0];
+      return {
+        latitude: first.lat,
+        longitude: first.lon,
+        latitudeDelta: 0.004,
+        longitudeDelta: 0.004,
+      };
+    }
 
     const lats = route.map((point) => point.lat);
     const lons = route.map((point) => point.lon);
@@ -42,9 +75,11 @@ export function DriveRouteMap({
       latitudeDelta: Math.max((maxLat - minLat) * 1.4, 0.01),
       longitudeDelta: Math.max((maxLon - minLon) * 1.4, 0.01),
     };
-  }, [route]);
+  }, [route, follow]);
 
-  if (!region || route.length < 2) {
+  // A live drive is worth showing from its very first fix; a finished one needs
+  // two points before there is a line to draw.
+  if (!region || route.length < (follow ? 1 : 2)) {
     return (
       <View
         style={[
@@ -52,7 +87,7 @@ export function DriveRouteMap({
           { height, backgroundColor: theme.backgroundSelected, borderColor: theme.border },
         ]}>
         <ThemedText type="small" themeColor="textSecondary">
-          No route recorded for this drive.
+          {follow ? 'Waiting for the first GPS fix…' : 'No route recorded for this drive.'}
         </ThemedText>
       </View>
     );
@@ -64,8 +99,10 @@ export function DriveRouteMap({
   return (
     <View style={[styles.container, { height, borderColor: theme.border }]}>
       <MapView
+        ref={mapRef}
         style={StyleSheet.absoluteFill}
         initialRegion={region}
+        showsUserLocation={follow}
         scrollEnabled={interactive}
         zoomEnabled={interactive}
         rotateEnabled={false}
@@ -81,7 +118,13 @@ export function DriveRouteMap({
           title="Start"
           pinColor="green"
         />
-        <Marker coordinate={{ latitude: end.lat, longitude: end.lon }} title="End" pinColor="red" />
+        {follow ? null : (
+          <Marker
+            coordinate={{ latitude: end.lat, longitude: end.lon }}
+            title="End"
+            pinColor="red"
+          />
+        )}
       </MapView>
     </View>
   );

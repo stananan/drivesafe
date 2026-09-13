@@ -1,9 +1,50 @@
 # DriveSafe TODO
 
-Running list of what is outstanding. `ROADMAP.md` is the product vision; this is
-the things that will actually bite us, roughly in the order they will bite.
+Running list of what is outstanding, roughly in the order it will bite. The
+README covers what the app is and how to run it; this is what is still wrong
+with it.
 
 Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
+
+---
+
+## What to do next, in order
+
+The app has now been driven, and it worked. That changes what matters: the
+question is no longer "does any of this function" but "is it good enough to
+submit".
+
+**1. Drive it again, with the fixes in.**
+The first drive produced five changes — a real live map, calmer noise
+thresholds, screams keeping clips, and a padding fix. All of them need seeing in
+a car. The noise thresholds especially: they moved on the strength of one drive,
+and the failure mode has flipped from firing constantly to possibly never
+firing at all.
+
+**2. Try the parent dashboard in a browser while that happens.**
+It compiles and the maps have browser implementations, but no parent has watched
+a live drive from a laptop yet. `npm run web`, sign in as the parent, have the
+driver set off. See `docs/web-dashboard.md`.
+
+**3. Decide what the submission actually is.**
+The Congressional App Challenge wants a demo video and source code. It does not
+require an App Store listing, and the App Store work — $99, an 18+ enrolment,
+days of review — buys nothing the judges asked for. Consider deliberately not
+doing it before the deadline, and spending that time on the demo instead. The
+blockers are already cleared if you change your mind.
+
+**4. Fix whatever that turns up.** Reserve time; the first drive found five
+things and it went *well*.
+
+**5. Then, and only then, the known gaps.**
+In the order they would embarrass a demo: the screen has to stay on for a drive
+to record, a drive ending in a dead zone is lost, and nothing ever deletes
+anything. None is worth starting before step 1.
+
+**Standing hazard, unrelated to any of the above:** a free Supabase project
+suspends after 7 days of inactivity, and every install breaks until someone
+restores it. If judges open this weeks after submission, that is what they will
+find. Put a reminder somewhere.
 
 ---
 
@@ -32,8 +73,13 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
 
 ## Before the first real road test
 
-- [ ] **Calibrate the audio thresholds.** `LOUD_THRESHOLD_DBFS = -12`,
-  `SUSTAIN_MS = 1500`, and `COOLDOWN_MS = 60000` in
+- [ ] **Re-check the audio thresholds on a second drive.** The first road test
+  had them firing on wind and road noise, so the threshold moved from -12 to -6
+  dBFS and the sustain window from 1.5 s to 2.5 s. That is one data point, not a
+  calibration — the risk now is the opposite one, where nothing ever fires and
+  every drive scores 100. Noise is one of only two things that can cost points.
+  `LOUD_THRESHOLD_DBFS`, `SCREAM_THRESHOLD_DBFS`, `SUSTAIN_MS` and
+  `COOLDOWN_MS` in
   `src/lib/use-audio-monitor.ts` are guesses. Both the drive screen and the
   parent dashboard draw the level graph with the alert line on it: sit in the
   car, watch where normal conversation, the stereo, and actual shouting land
@@ -52,7 +98,38 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
 - [ ] Decide whether the driver should be able to end a drive from a locked
   phone, or whether the screen staying on is acceptable for now.
 
+## Road testing
+
+The first drive went well. Recording, the live view and the parent's side all
+worked; what it turned up was five rough edges, all since fixed.
+
+- [x] A drive records at all.
+- [x] The parent sees it live.
+- [x] Noise detection fires — too readily, on wind and road noise. Thresholds
+  raised.
+- [ ] **Do the raised thresholds still fire when they should?** The risk has
+  flipped: -6 dBFS sustained for 2.5 s might now be too deaf. Shout in the car
+  and check something happens.
+- [ ] **Does a scream actually keep a clip?** New behaviour, never seen work.
+- [ ] **Does the live map follow properly at speed?** It replaced the dot
+  sketch and has only been seen standing still.
+- [ ] **Does the dashcam survive a long drive?** Battery, heat, and whether the
+  phone will record video with sound while the loudness monitor holds the
+  microphone. The dashcam card says so on screen if it will not.
+- [ ] **Does ending a drive in a dead zone lose it?** Known gap, no offline
+  queue. Worth confirming how bad it is before deciding whether to build one.
+- [ ] Mount the phone somewhere it can see the road. The dashcam is pointless
+  filming a lap.
+
 ## Known gaps in what is built
+
+- [ ] **Migrate the patterns the React Compiler lint flags.** SDK 57 turned the
+  compiler's rules on as errors; they are downgraded to warnings in
+  eslint.config.js because they flag thirteen pre-existing sites — latest-value
+  refs assigned during render, state resets in effects. The code works and the
+  compiler skips rather than miscompiles what it cannot prove, but each warning
+  is a component that is not getting compiler optimisation. Migrate a site,
+  watch the warning go, repeat.
 
 - [ ] **Recording is foreground-only.** `use-drive-tracker.ts` uses
   `watchPositionAsync` with a when-in-use permission and holds the screen awake.
@@ -67,9 +144,14 @@ Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
 - [ ] **The live route is not streamed.** The parent dashboard follows the
   driver's published position; `drive_points` are only uploaded when the drive
   ends, so there is no live polyline. Fine for now, worth knowing.
-- [ ] **A crashed or force-quit app leaves a drive open forever.** Nothing sets
-  `ended_at` if the phone dies mid-drive. Consider a "stale drive" sweep, or
-  treat a drive with no heartbeat for N minutes as ended.
+- [x] A crashed or force-quit app leaving a drive open forever. Backgrounding
+  now ends the drive, and opening the Drive tab closes anything a previous
+  session abandoned, dated from its last heartbeat.
+- [ ] **Backgrounding ends the drive, which is right but blunt.** A driver who
+  checks a text mid-journey comes back to a finished drive and has to start a
+  new one. Recording already stops when the app leaves the screen, so nothing is
+  lost that was not lost already — but background recording, if it is ever
+  built, should replace this rather than sit alongside it.
 - [ ] **Parent alert preferences are cosmetic.** The toggles in
   `(parent)/settings.tsx` are local state that nothing reads. Either wire them
   to the profile row and honour them in `notifyFamilyParents`, or remove them.
@@ -123,7 +205,7 @@ heavier than anything currently stored:
 
 - [ ] **Do not upload continuously.** Two 30-minute drives at ordinary quality
   exhaust the entire free storage tier. The rolling-buffer design already in
-  `ROADMAP.md` is the right one for reasons beyond product taste.
+  the rolling-buffer design is the right one for reasons beyond product taste.
 - [ ] **Keep clips on the phone; upload only what is saved.** An event-triggered
   60-second clip at 720p is ~6-14 MB, which is affordable. Everything else stays
   local and is overwritten.
@@ -132,11 +214,71 @@ heavier than anything currently stored:
 - [ ] **Egress matters too.** 5 GB/month is roughly 350-900 clip views. Fine for
   a family; not fine if a demo video autoplays clips to every visitor.
 
+## Dashcam — what is built and what is not
+
+Built: a rolling recorder that keeps the trailing minute in fifteen-second
+segments, manual "Save that", automatic saving on a loud-audio flag, upload to a
+private Supabase bucket, and playback on the drive detail screen.
+
+- [ ] **Try Expo Go first.** Every module this app uses — including
+  `expo-camera` and `expo-video` — is in the SDK 54 bundle at the exact version
+  installed, so Expo Go has all of it natively and the app loads normally. The
+  earlier assumption that the dashcam needs a development build is unverified
+  against this SDK. Scan the QR code, start a drive with the dashcam
+  on, and read the dashcam card: it surfaces any recording error directly.
+  Fall back to a development build only if that card reports one.
+- [!] **Push notifications genuinely do not work in Expo Go.** That capability
+  was removed in SDK 53 and no amount of configuration brings it back. This one
+  really does need `eas build --profile development` — `eas.json` is configured
+  for it.
+- [ ] **The iOS Simulator has no camera.** If a development build does become
+  necessary, it has to go on a physical phone; a simulator build runs everything
+  except the feature being tested.
+- [ ] **Settle whether one phone will record clip audio while the loudness
+  monitor runs.** Both want the microphone, and iOS may refuse. The app tries
+  with sound and falls back to video only for the rest of the drive if a
+  recording fails, surfacing a note on the dashcam card and setting
+  `has_audio` false on clips saved after that point. A single real drive
+  answers it: if the note never appears, both work and the fallback is dead
+  code worth keeping anyway.
+- [ ] **There is a gap of a few hundred milliseconds between segments** while
+  the camera stops and restarts. Closing it needs native code; a saved clip has
+  a small stutter at each seam.
+- [x] A clip is always exactly one file. The camera runs a single recording and
+  discards it unsaved; saving keeps that file whole.
+- [ ] **A clip runs 20 to 40 seconds, not exactly 20.** It holds everything the
+  current recording has captured, and the recording restarts every 40 seconds.
+  Overshooting is the harmless direction — extra footage before the moment is
+  context, while stopping short misses it.
+- [ ] **Saving can take up to twenty seconds** when it lands just after a
+  recording restarted: the flush waits for the recording to reach clip length
+  rather than hand back a two-second file. The driver sees "Saving clip…" for
+  that time, and the clip ends up holding a few seconds of the aftermath too.
+- [ ] **No retention policy.** See the free-tier section: one saved clip a day
+  fills the free storage tier within months, and nothing deletes anything.
+- [ ] **Deleting a drive leaves its files behind.** The database cascade drops
+  `drive_clips` rows, but storage objects are not touched by it, so they linger
+  and still count against the quota. `deleteClip` handles this for a single
+  clip; account and drive deletion do not.
+- [ ] **Battery and heat.** Camera plus GPS plus microphone plus a screen that
+  never sleeps is the heaviest thing the app can do. Test on a real drive before
+  assuming a phone survives an hour of it.
+- [ ] Voice trigger ("DriveSafe, save that") from the roadmap is not built.
+
 ## Nice to have
 
 - [ ] Rolling-buffer dashcam and the `"DriveSafe, save that"` voice trigger —
   still listed as Coming Soon on the drive screen.
 - [ ] `phone_distraction` is in the event enum and the scoring docs but nothing
   ever raises one.
-- [ ] Speed limits are not real. `SCORING.md` explains the assumption; a real
-  limit lookup would make the speeding events meaningful.
+- [x] Real speed limits from OpenStreetMap. `npm run check-limits` verifies the
+  matching against a real Overpass response.
+- [ ] **Watch what Overpass does on a real drive.** It is a donated public
+  service with no SLA, and three of four instances refused in a row while this
+  was being built. Everything fails soft to the flat 80 mph limit, but if that
+  happens often the scores quietly get less meaningful without anything looking
+  broken. If it becomes a problem, Mapbox is the paid way out.
+- [ ] **Check the class fallback against real signs.** Untagged roads get
+  California's prima facie limit plus 8 mph of margin. On a road you know the
+  posted limit of, confirm the app is not scoring you against a number that is
+  wrong in the dangerous direction.

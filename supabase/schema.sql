@@ -45,6 +45,21 @@ begin
   end if;
 end $$;
 
+-- Cornering had no type of its own, so the scorer filed those events under
+-- 'speeding' — a bend taken too fast showed up in the app labelled "Speeding"
+-- with a detail line that talked about a bend.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_enum e
+    join pg_type t on t.oid = e.enumtypid
+    where t.typname = 'drive_event_type' and e.enumlabel = 'harsh_corner'
+  ) then
+    alter type public.drive_event_type add value 'harsh_corner';
+  end if;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- Tables
 -- ---------------------------------------------------------------------------
@@ -84,7 +99,15 @@ alter table public.profiles
   -- Whether this driver wants audio distraction alerts. A preference rather than
   -- a per-drive choice, so it survives between trips and lives with the rest of
   -- the driver's settings.
-  add column if not exists audio_alerts_enabled boolean not null default false;
+  add column if not exists audio_alerts_enabled boolean not null default false,
+  -- Whether the dashcam records while this driver is on a drive.
+  add column if not exists dashcam_enabled boolean not null default false,
+  -- Set the first time this account creates or joins a family, and never
+  -- cleared. It distinguishes an abandoned sign-up — someone who made an account
+  -- and walked away before getting a code — from an established account that has
+  -- since left its family. The first is safe to delete on the way out; the second
+  -- has history behind it and must never be.
+  add column if not exists ever_joined_family boolean not null default false;
 
 -- DriveSafe briefly had a "let a parent listen in" consent flag. It was dropped:
 -- the app only ever measures loudness and never captures audio, so there was
@@ -94,8 +117,10 @@ alter table public.profiles drop column if exists listen_in_enabled;
 create table if not exists public.drives (
   id              uuid primary key default gen_random_uuid(),
   driver_id       uuid not null references public.profiles (id) on delete cascade,
-  -- Denormalized so a drive stays attached to its family even if the driver
-  -- later leaves, and so parents can filter without joining through profiles.
+  -- Denormalized so parents can filter without joining through profiles, and so
+  -- leave_family() can revoke a family's access to a driver's whole history by
+  -- clearing one column. Null means no family can see this drive — only the
+  -- driver who recorded it.
   family_id       uuid references public.families (id) on delete set null,
   started_at      timestamptz not null,
   -- Null while the drive is in progress; this is how "currently driving" is derived.
@@ -116,7 +141,12 @@ alter table public.drives
   -- was actually being monitored at the time.
   add column if not exists audio_monitoring boolean not null default false,
   -- Most recent speed sample, metres per second. Only meaningful mid-drive.
-  add column if not exists current_speed double precision not null default 0;
+  add column if not exists current_speed double precision not null default 0,
+  -- When the driver's phone last reported in. A drive whose phone stopped
+  -- talking — app killed, battery dead, signal gone — would otherwise stay open
+  -- forever, so this is what a later session uses to close it at the right time
+  -- rather than at whatever hour it was noticed.
+  add column if not exists heartbeat_at timestamptz;
 
 create index if not exists drives_driver_started_idx
   on public.drives (driver_id, started_at desc);
@@ -169,6 +199,57 @@ create table if not exists public.drive_audio_levels (
 
 create index if not exists drive_audio_levels_drive_idx
   on public.drive_audio_levels (drive_id, recorded_at);
+
+-- Dashcam clips.
+--
+-- Clips carry sound, like any other dashcam. `has_audio` records whether a
+-- particular clip actually got it: the camera and the loudness monitor both
+-- want the microphone, and where a phone refuses to give it to both the app
+-- falls back to video only rather than losing the dashcam entirely.
+create table if not exists public.drive_clips (
+  id               uuid primary key default gen_random_uuid(),
+  drive_id         uuid not null references public.drives (id) on delete cascade,
+  -- What caused this clip to be kept rather than discarded.
+  reason           text not null check (reason in ('manual', 'loud_audio')),
+  -- Start of the earliest part.
+  recorded_at      timestamptz not null,
+  duration_seconds double precision not null default 0,
+  created_at       timestamptz not null default now()
+);
+
+-- Added after drive_clips already existed in live projects. It has to be its own
+-- statement: `create table if not exists` does nothing at all when the table is
+-- already there, so a column declared inside that block above would never
+-- appear on any database that had run this file before.
+alter table public.drive_clips
+  -- False when the phone would not record sound alongside loudness monitoring.
+  add column if not exists has_audio boolean not null default true,
+  -- What the driver called this clip. Null means it is still shown by why it
+  -- was kept, which is a better default than "Clip 1".
+  add column if not exists title text;
+
+create index if not exists drive_clips_drive_idx
+  on public.drive_clips (drive_id, recorded_at desc);
+
+-- One clip is several files.
+--
+-- Phones cannot ring-buffer video, so the dashcam records fixed-length segments
+-- and keeps the trailing few. Saving a clip keeps whichever segments were on
+-- disk at that moment. Nothing available to an Expo app can stitch them into a
+-- single file, so the parts stay separate and the player runs them in order.
+create table if not exists public.drive_clip_parts (
+  id               uuid primary key default gen_random_uuid(),
+  clip_id          uuid not null references public.drive_clips (id) on delete cascade,
+  part_index       integer not null,
+  -- Path within the `drive-clips` bucket: drives/<drive_id>/<clip_id>/<n>.mp4
+  storage_path     text not null,
+  duration_seconds double precision not null default 0,
+  bytes            bigint not null default 0,
+  unique (clip_id, part_index)
+);
+
+create index if not exists drive_clip_parts_clip_idx
+  on public.drive_clip_parts (clip_id, part_index);
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -317,7 +398,9 @@ begin
   values (trim(family_name), public.generate_family_code(), auth.uid())
   returning * into new_family;
 
-  update public.profiles set family_id = new_family.id where id = auth.uid();
+  update public.profiles
+  set family_id = new_family.id, ever_joined_family = true
+  where id = auth.uid();
 
   return new_family;
 end $$;
@@ -344,7 +427,9 @@ begin
     raise exception 'family_not_found';
   end if;
 
-  update public.profiles set family_id = target.id where id = auth.uid();
+  update public.profiles
+  set family_id = target.id, ever_joined_family = true
+  where id = auth.uid();
 
   return target;
 end $$;
@@ -359,6 +444,20 @@ begin
   if auth.uid() is null then
     raise exception 'not_authenticated';
   end if;
+
+  -- Leaving takes your history with you. A parent should not keep a driver's
+  -- routes, scores and dashcam footage after that driver has left the family.
+  --
+  -- Detaching the drives is enough to do all of it at once: every parent-facing
+  -- read — the drive list, its events, its audio levels, its clips, and the
+  -- storage policies guarding the clip files themselves — decides access by
+  -- resolving this column, so clearing it closes all of them together.
+  --
+  -- Detached rather than deleted. These are still the driver's own drives and
+  -- they go on seeing them; it is the family's claim on them that ends. Nothing
+  -- is restored by rejoining later, which is the honest outcome: the family did
+  -- not have this history while the driver was gone.
+  update public.drives set family_id = null where driver_id = auth.uid();
 
   update public.profiles set family_id = null where id = auth.uid();
 end $$;
@@ -384,9 +483,34 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  caller_role   public.user_role;
+  caller_family uuid;
 begin
   if auth.uid() is null then
     raise exception 'not_authenticated';
+  end if;
+
+  select role, family_id into caller_role, caller_family
+  from public.profiles
+  where id = auth.uid();
+
+  -- A family with no parent left in it cannot be run: nobody can share the code
+  -- or see a drive, and the drivers still in it would be broadcasting their
+  -- location to an empty room. So the last parent to leave takes the family
+  -- with them.
+  --
+  -- Relying on the cascade from families.created_by would only cover the parent
+  -- who happened to create it, which is not the same question.
+  if caller_role = 'parent' and caller_family is not null then
+    if not exists (
+      select 1 from public.profiles
+      where family_id = caller_family
+        and role = 'parent'
+        and id <> auth.uid()
+    ) then
+      delete from public.families where id = caller_family;
+    end if;
   end if;
 
   delete from auth.users where id = auth.uid();
@@ -406,6 +530,8 @@ alter table public.drives enable row level security;
 alter table public.drive_points enable row level security;
 alter table public.drive_events enable row level security;
 alter table public.drive_audio_levels enable row level security;
+alter table public.drive_clips enable row level security;
+alter table public.drive_clip_parts enable row level security;
 
 drop policy if exists "read own family" on public.families;
 create policy "read own family"
@@ -522,6 +648,84 @@ create policy "driver inserts own levels"
     )
   );
 
+drop policy if exists "read clips of visible drives" on public.drive_clips;
+create policy "read clips of visible drives"
+  on public.drive_clips for select
+  using (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id
+        and (
+          d.driver_id = auth.uid()
+          or (d.family_id is not null and d.family_id = public.my_family_id())
+        )
+    )
+  );
+
+drop policy if exists "driver inserts own clips" on public.drive_clips;
+create policy "driver inserts own clips"
+  on public.drive_clips for insert
+  with check (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id and d.driver_id = auth.uid()
+    )
+  );
+
+drop policy if exists "driver renames own clips" on public.drive_clips;
+create policy "driver renames own clips"
+  on public.drive_clips for update
+  using (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id and d.driver_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id and d.driver_id = auth.uid()
+    )
+  );
+
+drop policy if exists "driver deletes own clips" on public.drive_clips;
+create policy "driver deletes own clips"
+  on public.drive_clips for delete
+  using (
+    exists (
+      select 1 from public.drives d
+      where d.id = drive_id and d.driver_id = auth.uid()
+    )
+  );
+
+drop policy if exists "read parts of visible clips" on public.drive_clip_parts;
+create policy "read parts of visible clips"
+  on public.drive_clip_parts for select
+  using (
+    exists (
+      select 1
+      from public.drive_clips c
+      join public.drives d on d.id = c.drive_id
+      where c.id = clip_id
+        and (
+          d.driver_id = auth.uid()
+          or (d.family_id is not null and d.family_id = public.my_family_id())
+        )
+    )
+  );
+
+drop policy if exists "driver inserts own parts" on public.drive_clip_parts;
+create policy "driver inserts own parts"
+  on public.drive_clip_parts for insert
+  with check (
+    exists (
+      select 1
+      from public.drive_clips c
+      join public.drives d on d.id = c.drive_id
+      where c.id = clip_id and d.driver_id = auth.uid()
+    )
+  );
+
 -- ---------------------------------------------------------------------------
 -- Keep a drive's family in step with its driver, so parents never lose sight of
 -- a drive because the row was written before the child joined the family.
@@ -553,8 +757,15 @@ create trigger drives_set_family
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.drives to authenticated;
 grant select, insert
-  on public.drive_points, public.drive_events, public.drive_audio_levels
+  on public.drive_points, public.drive_events, public.drive_audio_levels,
+     public.drive_clip_parts
   to authenticated;
+-- Deletable so a driver can take back footage they did not mean to keep, and
+-- renameable so a clip can be called what it actually is. Only the title is
+-- writable: a blanket update would let a driver rewrite when a clip happened or
+-- claim it was saved deliberately when DriveSafe kept it for them.
+grant select, insert, delete on public.drive_clips to authenticated;
+grant update (title) on public.drive_clips to authenticated;
 grant select on public.families, public.profiles to authenticated;
 
 -- Column-level on purpose. A blanket UPDATE would let a child set their own
@@ -569,7 +780,8 @@ grant update (
     last_location_at,
     location_sharing,
     push_token,
-    audio_alerts_enabled
+    audio_alerts_enabled,
+    dashcam_enabled
   )
   on public.profiles to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
@@ -580,6 +792,62 @@ grant execute on function public.create_family(text) to authenticated;
 grant execute on function public.join_family(text) to authenticated;
 grant execute on function public.leave_family() to authenticated;
 grant execute on function public.delete_account() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Dashcam storage
+--
+-- Private bucket. Clips are served through short-lived signed URLs rather than
+-- public links, because a public bucket would make every clip readable by
+-- anyone holding the path — which for footage from inside a teenager's car is
+-- not a risk worth taking for the convenience.
+--
+-- Access is decided from the path. Clips live at
+--   drives/<drive_id>/<clip_id>/<n>.mp4
+-- so `storage.foldername(name)` yields {drives, <drive_id>, <clip_id>} and the
+-- policies below resolve element 2 back to a drive to ask the same question the
+-- rest of the schema asks: is this yours, or your family's?
+-- ---------------------------------------------------------------------------
+
+insert into storage.buckets (id, name, public)
+values ('drive-clips', 'drive-clips', false)
+on conflict (id) do nothing;
+
+drop policy if exists "read family clip files" on storage.objects;
+create policy "read family clip files"
+  on storage.objects for select
+  using (
+    bucket_id = 'drive-clips'
+    and exists (
+      select 1 from public.drives d
+      where d.id::text = (storage.foldername(name))[2]
+        and (
+          d.driver_id = auth.uid()
+          or (d.family_id is not null and d.family_id = public.my_family_id())
+        )
+    )
+  );
+
+drop policy if exists "driver writes own clip files" on storage.objects;
+create policy "driver writes own clip files"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'drive-clips'
+    and exists (
+      select 1 from public.drives d
+      where d.id::text = (storage.foldername(name))[2] and d.driver_id = auth.uid()
+    )
+  );
+
+drop policy if exists "driver deletes own clip files" on storage.objects;
+create policy "driver deletes own clip files"
+  on storage.objects for delete
+  using (
+    bucket_id = 'drive-clips'
+    and exists (
+      select 1 from public.drives d
+      where d.id::text = (storage.foldername(name))[2] and d.driver_id = auth.uid()
+    )
+  );
 
 -- ---------------------------------------------------------------------------
 -- Realtime
@@ -595,7 +863,12 @@ do $$
 declare
   target text;
 begin
-  foreach target in array array['drives', 'drive_events', 'drive_audio_levels'] loop
+  foreach target in array array[
+    'drives',
+    'drive_events',
+    'drive_audio_levels',
+    'drive_clips'
+  ] loop
     if not exists (
       select 1 from pg_publication_tables
       where pubname = 'supabase_realtime'
