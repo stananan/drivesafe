@@ -1,16 +1,23 @@
 import * as Clipboard from 'expo-clipboard';
 import * as Location from 'expo-location';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import MapView, { Marker, type Region } from 'react-native-maps';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AvatarPin } from '@/components/avatar-pin';
+import { PinsMap } from '@/components/maps/pins-map';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { ScoreBadge } from '@/components/ui/score-badge';
-import { BottomTabInset, Radius, Spacing } from '@/constants/theme';
+import { BottomTabInset, Radius, Spacing, WebHeaderInset } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { listFamilyDrivers } from '@/lib/drives';
 import { formatRelative } from '@/lib/format';
@@ -21,14 +28,6 @@ import { useAsync } from '@/lib/use-async';
 import { useDriveActivity } from '@/lib/use-drive-activity';
 import { useFamilyAlerts } from '@/lib/use-family-alerts';
 import type { LinkedDriver } from '@/types/drive';
-
-/** Marin County, so an empty map still shows the district DriveSafe was built for. */
-const FALLBACK_REGION: Region = {
-  latitude: 38.0834,
-  longitude: -122.7633,
-  latitudeDelta: 0.2,
-  longitudeDelta: 0.2,
-};
 
 /**
  * Backstop only — `useDriveActivity` is what actually makes a drive appear
@@ -41,11 +40,15 @@ export default function ParentLiveScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  // A phone gets a full-bleed map with a sheet pulled over its bottom edge.
+  // A browser window is the wrong shape for that: the map becomes a 1440px wall
+  // and the driver list a strip under it. Side by side, bounded, is what a
+  // dashboard wants.
+  const isWeb = Platform.OS === 'web';
   const { profile, family } = useSession();
 
-  const mapRef = useRef<MapView | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const hasFramed = useRef(false);
 
   const drivers = useAsync(
     () => (family ? listFamilyDrivers(family.id) : Promise.resolve([])),
@@ -130,40 +133,11 @@ export default function ParentLiveScreen() {
     [driverList]
   );
 
-  /** Slides the map to a driver rather than jumping, so the move is followable. */
+  /** Selecting a driver is what moves the map; PinsMap does the animating. */
   const centerOn = useCallback((driver: LinkedDriver) => {
-    if (!driver.lastLocation || !mapRef.current) return;
-
+    if (!driver.lastLocation) return;
     setSelectedId(driver.id);
-    mapRef.current.animateToRegion(
-      {
-        latitude: driver.lastLocation.lat,
-        longitude: driver.lastLocation.lon,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      },
-      700
-    );
   }, []);
-
-  // Frame everyone once, the first time positions arrive.
-  useEffect(() => {
-    if (hasFramed.current || located.length === 0 || !mapRef.current) return;
-    hasFramed.current = true;
-
-    if (located.length === 1) {
-      centerOn(located[0]);
-      return;
-    }
-
-    mapRef.current.fitToCoordinates(
-      located.map((driver) => ({
-        latitude: driver.lastLocation!.lat,
-        longitude: driver.lastLocation!.lon,
-      })),
-      { edgePadding: { top: 90, right: 70, bottom: 90, left: 70 }, animated: true }
-    );
-  }, [located, centerOn]);
 
   async function copyCode() {
     if (!family) return;
@@ -174,48 +148,41 @@ export default function ParentLiveScreen() {
   const noDriversYet = !drivers.isLoading && driverList.length === 0;
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.background }]}>
-      <View style={styles.mapWrap}>
-        <MapView
-          ref={mapRef}
-          style={StyleSheet.absoluteFill}
-          initialRegion={FALLBACK_REGION}
-          showsUserLocation
-          showsMyLocationButton={false}
-          toolbarEnabled={false}>
-          {located.map((driver) => (
-            <Marker
-              key={driver.id}
-              coordinate={{
-                latitude: driver.lastLocation!.lat,
-                longitude: driver.lastLocation!.lon,
-              }}
-              onPress={() => centerOn(driver)}
-              // The pin's point sits at the coordinate, not its middle.
-              anchor={{ x: 0.5, y: 1 }}
-              tracksViewChanges={false}>
-              <AvatarPin
-                label={driver.name}
-                isDriving={driver.activeDriveId !== null}
-                isSelected={selectedId === driver.id}
-              />
-            </Marker>
-          ))}
-        </MapView>
+    <View
+      style={[styles.root, isWeb && styles.rootWeb, { backgroundColor: theme.background }]}>
+      <View style={[styles.page, isWeb && styles.pageWeb]}>
+        <View style={[styles.mapWrap, isWeb && styles.mapWrapWeb]}>
+        <PinsMap
+          fill
+          focusId={selectedId}
+          pins={located.map((driver) => ({
+            id: driver.id,
+            lat: driver.lastLocation!.lat,
+            lon: driver.lastLocation!.lon,
+            label: driver.name,
+            isDriving: driver.activeDriveId !== null,
+            isSelected: selectedId === driver.id,
+          }))}
+        />
 
-        <View style={[styles.mapHeader, { top: insets.top + Spacing.two }]}>
-          <View style={[styles.floatingCard, { backgroundColor: theme.backgroundElement }]}>
-            <ThemedText type="smallBold">{family?.name ?? 'Your family'}</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {drivers.isLoading
-                ? 'Loading…'
-                : located.length === 0
-                  ? 'No live locations yet'
-                  : `${located.length} ${located.length === 1 ? 'driver' : 'drivers'} on the map`}
-            </ThemedText>
+          <View
+            style={[
+              styles.mapHeader,
+              isWeb && styles.mapHeaderWeb,
+              { top: (isWeb ? Spacing.three : insets.top) + Spacing.two },
+            ]}>
+            <View style={[styles.floatingCard, { backgroundColor: theme.backgroundElement }]}>
+              <ThemedText type="smallBold">{family?.name ?? 'Your family'}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {drivers.isLoading
+                  ? 'Loading…'
+                  : located.length === 0
+                    ? 'No live locations yet'
+                    : `${located.length} ${located.length === 1 ? 'driver' : 'drivers'} on the map`}
+              </ThemedText>
+            </View>
           </View>
         </View>
-      </View>
 
       {alert ? (
         <Pressable
@@ -228,7 +195,7 @@ export default function ParentLiveScreen() {
             styles.alertBanner,
             {
               backgroundColor: theme.warning,
-              bottom: BottomTabInset + insets.bottom + Spacing.three,
+              bottom: isWeb ? Spacing.four : BottomTabInset + insets.bottom + Spacing.three,
               opacity: pressed ? 0.9 : 1,
             },
           ]}>
@@ -241,14 +208,19 @@ export default function ParentLiveScreen() {
         </Pressable>
       ) : null}
 
-      <View style={[styles.sheet, { backgroundColor: theme.background }]}>
-        {noDriversYet ? (
+        <View
+          style={[styles.sheet, isWeb && styles.sheetWeb, { backgroundColor: theme.background }]}>
+          {noDriversYet ? (
           <FamilyCodeOnboarding code={family?.code ?? ''} onCopy={() => void copyCode()} />
         ) : (
           <ScrollView
             contentContainerStyle={[
               styles.listContent,
-              { paddingBottom: BottomTabInset + insets.bottom + Spacing.three },
+              {
+                paddingBottom: isWeb
+                  ? Spacing.four
+                  : BottomTabInset + insets.bottom + Spacing.three,
+              },
             ]}
             showsVerticalScrollIndicator={false}>
             <View style={styles.listHeader}>
@@ -277,8 +249,9 @@ export default function ParentLiveScreen() {
                 }}
               />
             ))}
-          </ScrollView>
-        )}
+            </ScrollView>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -301,7 +274,12 @@ function FamilyCodeOnboarding({ code, onCopy }: { code: string; onCopy: () => vo
       </ThemedText>
 
       <View style={[styles.codeBox, { borderColor: theme.tint, backgroundColor: theme.backgroundElement }]}>
-        <ThemedText style={[styles.code, { color: theme.tint }]}>{code || '——————'}</ThemedText>
+        <ThemedText
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          style={[styles.code, { color: theme.tint }]}>
+          {code || '——————'}
+        </ThemedText>
       </View>
 
       <Button label="Copy code" variant="secondary" onPress={onCopy} />
@@ -384,9 +362,40 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
+  // Two columns inside a bounded, centred page rather than one tall phone.
+  // Full width, so the page background reaches the window edges. The bounded
+  // column lives inside it.
+  rootWeb: {
+    alignItems: 'center',
+    paddingTop: WebHeaderInset,
+    paddingBottom: Spacing.four,
+    paddingHorizontal: Spacing.three,
+  },
+  page: {
+    flex: 1,
+  },
+  pageWeb: {
+    flexDirection: 'row',
+    width: '100%',
+    maxWidth: 1180,
+    gap: Spacing.three,
+  },
+  // Clear of the zoom controls, and sized to its text rather than stretched
+  // across the whole map.
+  mapHeaderWeb: {
+    left: 56,
+    right: undefined,
+    maxWidth: 320,
+  },
   // Upper portion of the screen is the map; the list sheet takes the rest.
   mapWrap: {
     flex: 6,
+  },
+  mapWrapWeb: {
+    flex: 3,
+    borderRadius: Radius.large,
+    overflow: 'hidden',
+    minHeight: 460,
   },
   sheet: {
     flex: 4,
@@ -395,6 +404,15 @@ const styles = StyleSheet.create({
     marginTop: -Radius.large,
     paddingTop: Spacing.three,
     paddingHorizontal: Spacing.three,
+  },
+  // Beside the map, not pulled over it — nothing to overlap.
+  sheetWeb: {
+    flex: 2,
+    maxWidth: 400,
+    marginTop: 0,
+    borderRadius: Radius.large,
+    paddingTop: 0,
+    paddingHorizontal: 0,
   },
   mapHeader: {
     position: 'absolute',
@@ -477,14 +495,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.medium,
     paddingVertical: Spacing.three,
+    // Without this the code runs to the very edge on a narrow phone and the
+    // last character is clipped by the border radius.
+    paddingHorizontal: Spacing.three,
     alignItems: 'center',
   },
   code: {
     fontSize: 34,
+    // ThemedText's default style sets lineHeight 24. Raising fontSize without
+    // raising this leaves 34px glyphs rendering inside a 24px line box, which
+    // slices the top and bottom off every character.
+    lineHeight: 42,
     fontWeight: '700',
-    letterSpacing: 8,
+    letterSpacing: 6,
     // letterSpacing adds a trailing gap after the last character, which pushes
     // centred text visibly left. Pull it back by the same amount.
-    marginLeft: 8,
+    marginLeft: 6,
   },
 });

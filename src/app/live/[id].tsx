@@ -1,10 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
 
 import { AudioLevelGraph } from '@/components/audio-level-graph';
-import { AvatarPin } from '@/components/avatar-pin';
+import { PinsMap } from '@/components/maps/pins-map';
 import { ThemedText } from '@/components/themed-text';
 import { Card } from '@/components/ui/card';
 import { QueryState } from '@/components/ui/query-state';
@@ -45,6 +44,7 @@ const EVENT_LABELS: Record<DriveEvent['type'], string> = {
   speeding: 'Speeding',
   hard_brake: 'Hard brake',
   rapid_accel: 'Rapid acceleration',
+  harsh_corner: 'Fast through a bend',
   phone_distraction: 'Phone distraction',
   loud_audio: 'Loud in the car',
 };
@@ -176,24 +176,20 @@ export default function LiveDriveScreen() {
 
       <Card>
         {position ? (
-          <View style={styles.mapWrap}>
-            <MapView
-              style={StyleSheet.absoluteFill}
-              region={{
-                latitude: position.lat,
-                longitude: position.lon,
-                latitudeDelta: 0.01,
-                longitudeDelta: 0.01,
-              }}
-              toolbarEnabled={false}>
-              <Marker
-                coordinate={{ latitude: position.lat, longitude: position.lon }}
-                anchor={{ x: 0.5, y: 1 }}
-                tracksViewChanges={false}>
-                <AvatarPin label={drive.driverName} isDriving={isActive} isSelected />
-              </Marker>
-            </MapView>
-          </View>
+          <PinsMap
+            height={260}
+            focusId={drive.driverId}
+            pins={[
+              {
+                id: drive.driverId,
+                lat: position.lat,
+                lon: position.lon,
+                label: drive.driverName,
+                isDriving: isActive,
+                isSelected: true,
+              },
+            ]}
+          />
         ) : (
           <View style={[styles.mapWrap, styles.mapEmpty, { borderColor: theme.border }]}>
             <ThemedText type="small" themeColor="textSecondary">

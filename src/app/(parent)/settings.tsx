@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, StyleSheet, Switch, View } from 'react-native';
+import { StyleSheet, Switch, View } from 'react-native';
 
 import { AboutCard } from '@/components/about-card';
 import { DeleteAccountCard } from '@/components/delete-account-card';
@@ -10,15 +10,16 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { QueryState } from '@/components/ui/query-state';
 import { Screen } from '@/components/ui/screen';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { confirmAction, notify } from '@/lib/confirm';
 import { listFamilyDrivers } from '@/lib/drives';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/use-async';
 
 export default function ParentSettingsScreen() {
   const theme = useTheme();
-  const { family, session, signOut } = useSession();
+  const { family, session, signOut, leaveFamily } = useSession();
 
   const drivers = useAsync(
     () => (family ? listFamilyDrivers(family.id) : Promise.resolve([])),
@@ -38,11 +39,22 @@ export default function ParentSettingsScreen() {
   const [alertOnHardBrake, setAlertOnHardBrake] = useState(true);
   const [alertOnDriveEnd, setAlertOnDriveEnd] = useState(false);
 
+  async function confirmLeave() {
+    const ok = await confirmAction({
+      title: 'Leave this family?',
+      message:
+        'You will stop seeing your drivers, their drives, and their clips. Their accounts and the family stay as they are, and you can create or join another afterwards.',
+      confirmLabel: 'Leave',
+    });
+
+    if (ok) void leaveFamily();
+  }
+
   async function copyCode() {
     if (!family) return;
 
     await Clipboard.setStringAsync(family.code);
-    Alert.alert('Copied', `Family code ${family.code} is on your clipboard.`);
+    notify('Copied', `Family code ${family.code} is on your clipboard.`);
   }
 
   const driverList = drivers.data ?? [];
@@ -50,12 +62,17 @@ export default function ParentSettingsScreen() {
   return (
     <Screen title="Settings" subtitle="Your family code, drivers, and alerts.">
       <Card title="Family code" meta={family?.name ?? ''}>
-        <View style={styles.codeRow}>
-          <ThemedText style={[styles.code, { color: theme.tint }]}>
+        <View
+          style={[
+            styles.codeBox,
+            { borderColor: theme.tint, backgroundColor: theme.backgroundElement },
+          ]}>
+          <ThemedText numberOfLines={1} style={[styles.code, { color: theme.tint }]}>
             {family?.code ?? '——————'}
           </ThemedText>
-          <Button label="Copy" variant="secondary" onPress={() => void copyCode()} />
         </View>
+
+        <Button label="Copy code" variant="secondary" onPress={() => void copyCode()} />
         <ThemedText type="small" themeColor="textSecondary">
           Share this to add another driver. New parents get the big version on the Live tab until
           someone joins.
@@ -110,7 +127,10 @@ export default function ParentSettingsScreen() {
 
       <AboutCard />
 
-      <Button label="Sign out" variant="secondary" onPress={() => void signOut()} />
+      <View style={styles.rows}>
+        <Button label="Leave family" variant="secondary" onPress={() => void confirmLeave()} />
+        <Button label="Sign out" variant="secondary" onPress={() => void signOut()} />
+      </View>
 
       <DeleteAccountCard />
 
@@ -156,16 +176,26 @@ const styles = StyleSheet.create({
     minHeight: 32,
     gap: Spacing.two,
   },
-  codeRow: {
-    flexDirection: 'row',
+  // The code gets a row to itself. Sharing one with the Copy button left it
+  // competing for width on a narrow phone, and shrinking it to fit only traded
+  // a clipped code for an unreadably small one.
+  codeBox: {
+    borderWidth: 1,
+    borderRadius: Radius.medium,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.three,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.three,
   },
   code: {
-    fontSize: 28,
+    fontSize: 30,
+    // Must rise with fontSize: ThemedText's default lineHeight of 24 would clip
+    // these glyphs top and bottom.
+    lineHeight: 38,
     fontWeight: '700',
-    letterSpacing: 4,
+    letterSpacing: 6,
+    // letterSpacing adds a trailing gap after the last character, which pushes
+    // centred text visibly left. Pull it back by the same amount.
+    marginLeft: 6,
   },
   footer: {
     textAlign: 'center',

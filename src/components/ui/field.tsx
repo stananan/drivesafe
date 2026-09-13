@@ -26,7 +26,7 @@ export function Field({ label, error, hint, style, ...rest }: FieldProps) {
           styles.input,
           {
             color: theme.text,
-            backgroundColor: theme.background,
+            backgroundColor: theme.backgroundInput,
             borderColor: error ? theme.danger : theme.border,
           },
           style,
