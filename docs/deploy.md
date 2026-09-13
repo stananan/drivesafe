@@ -33,13 +33,25 @@ shadow the bundle or the assets.
 **The build command runs `scripts/check-env.js` first**, which is what turns a
 missing key into a failed build rather than a broken site.
 
-**The install command skips dev dependencies.** Not an optimisation — npm writes
-a lock entry for `@unrs/resolver-binding-openharmony-arm64` with no version
-field at all, and a Linux npm resolving it fails the whole install with
-`Invalid Version:`. It arrives under the eslint tooling, which a build does not
-need, so `--omit=dev` never reaches it. Regenerating the lock does not help: npm
-writes the same broken entry every time. Deleting the entry by hand does not
-help either — the lock then fails `npm ci` for being out of sync.
+**The install command skips dev dependencies**, which the build does not need
+and which keeps installs quick.
+
+### If the install fails with `Invalid Version:`
+
+npm sometimes writes the lock entry for
+`@unrs/resolver-binding-openharmony-arm64` — a HarmonyOS binary nobody here will
+run, pulled in under the eslint tooling — as a stub with no version field at
+all. macOS npm tolerates it; Linux npm resolves it, finds nothing, and fails the
+whole install with an empty version in the message.
+
+The entry now carries its real version, tarball and integrity, taken from the
+registry, so the lock is complete and both `npm ci` and `npm install` accept it.
+A normal `npm install` preserves it rather than re-stubbing it.
+
+Two things that do **not** fix it, tried in this order: `--omit=dev` does not
+help, because npm validates the whole lock before deciding what to install.
+Deleting the entry does not help either — the lock then fails `npm ci` for being
+out of sync with `package.json`. The entry has to be complete, not absent.
 
 The other two set the output directory and cache the hashed bundle forever.
 
