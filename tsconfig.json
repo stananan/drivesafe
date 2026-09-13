@@ -2,6 +2,9 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    // The scripts/ checkers run under Node via tsx; without this their fs and
+    // path imports fail typecheck. SDK 57's base config stopped including it.
+    "types": ["node"],
     "paths": {
       "@/*": [
         "./src/*"
