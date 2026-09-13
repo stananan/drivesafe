@@ -21,6 +21,45 @@ EXPO_PUBLIC_SUPABASE_URL
 EXPO_PUBLIC_SUPABASE_ANON_KEY
 ```
 
+## What `vercel.json` does
+
+Four things, and two of them matter:
+
+**The rewrite.** The app is a single page — expo-router handles paths in the
+browser — so every URL has to reach `index.html` or refreshing `/clips` is a
+404. Vercel serves real files before applying rewrites, so the catch-all cannot
+shadow the bundle or the assets.
+
+**The build command runs `scripts/check-env.js` first**, which is what turns a
+missing key into a failed build rather than a broken site.
+
+**The install command skips dev dependencies**, which the build does not need
+and which keeps installs quick.
+
+### If the install fails with `Invalid Version:`
+
+npm sometimes writes the lock entry for
+`@unrs/resolver-binding-openharmony-arm64` — a HarmonyOS binary nobody here will
+run, pulled in under the eslint tooling — as a stub with no version field at
+all. macOS npm tolerates it; Linux npm resolves it, finds nothing, and fails the
+whole install with an empty version in the message.
+
+The entry now carries its real version, tarball and integrity, taken from the
+registry, so the lock is complete and both `npm ci` and `npm install` accept it.
+A normal `npm install` preserves it rather than re-stubbing it.
+
+Two things that do **not** fix it, tried in this order: `--omit=dev` does not
+help, because npm validates the whole lock before deciding what to install.
+Deleting the entry does not help either — the lock then fails `npm ci` for being
+out of sync with `package.json`. The entry has to be complete, not absent.
+
+The other two set the output directory and cache the hashed bundle forever.
+
+Do not add `comment` fields to entries in this file. Vercel validates it against
+a schema where `headers[]` and `rewrites[]` both set
+`additionalProperties: false`, and an unknown key fails the deployment before it
+builds.
+
 ## Vercel, from the dashboard
 
 1. **vercel.com/new** → Import Git Repository → `stananan/drivesafe`. If the repo
