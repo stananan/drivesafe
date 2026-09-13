@@ -23,21 +23,7 @@ npm run build:web    # static build into dist/
 `.env.local` is read the same way as for the phone, so a browser build needs the
 same two `EXPO_PUBLIC_SUPABASE_*` values.
 
-## Deploying it
-
-`npm run build:web` produces a plain static site in `dist/`. Any static host
-takes it — Netlify, Vercel, Cloudflare Pages, GitHub Pages.
-
-Two things to get right:
-
-**Serve it as a single-page app.** `app.json` sets `web.output` to `single`, so
-there is one `index.html` and the router handles paths in the browser. The host
-must rewrite unknown paths to `index.html`, or a refresh on `/live/abc` will
-404. Most hosts call this "SPA mode" or "rewrite all to index.html".
-
-**Nothing secret ships.** The build contains the Supabase URL and the anon key,
-which are public by design — row-level security is what protects the data, not
-the key. Never put a service-role key in `.env.local`.
+Shipping it is in [deploy.md](./deploy.md).
 
 ## How the maps work
 

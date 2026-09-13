@@ -1,7 +1,8 @@
 # DriveSafe TODO
 
-Running list of what is outstanding. `ROADMAP.md` is the product vision; this is
-the things that will actually bite us, roughly in the order they will bite.
+Running list of what is outstanding, roughly in the order it will bite. The
+README covers what the app is and how to run it; this is what is still wrong
+with it.
 
 Convention: `[ ]` open, `[x]` done, `[!]` blocked on something outside the code.
 
@@ -204,7 +205,7 @@ heavier than anything currently stored:
 
 - [ ] **Do not upload continuously.** Two 30-minute drives at ordinary quality
   exhaust the entire free storage tier. The rolling-buffer design already in
-  `ROADMAP.md` is the right one for reasons beyond product taste.
+  the rolling-buffer design is the right one for reasons beyond product taste.
 - [ ] **Keep clips on the phone; upload only what is saved.** An event-triggered
   60-second clip at 720p is ~6-14 MB, which is affordable. Everything else stays
   local and is overwritten.
@@ -222,8 +223,8 @@ private Supabase bucket, and playback on the drive detail screen.
 - [ ] **Try Expo Go first.** Every module this app uses — including
   `expo-camera` and `expo-video` — is in the SDK 54 bundle at the exact version
   installed, so Expo Go has all of it natively and the app loads normally. The
-  older note in `ROADMAP.md` saying the dashcam needs a development build is
-  unverified against this SDK. Scan the QR code, start a drive with the dashcam
+  earlier assumption that the dashcam needs a development build is unverified
+  against this SDK. Scan the QR code, start a drive with the dashcam
   on, and read the dashcam card: it surfaces any recording error directly.
   Fall back to a development build only if that card reports one.
 - [!] **Push notifications genuinely do not work in Expo Go.** That capability
