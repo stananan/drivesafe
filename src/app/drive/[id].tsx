@@ -2,7 +2,8 @@ import { useLocalSearchParams } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { AudioLevelGraph } from '@/components/audio-level-graph';
-import { DriveRouteMap } from '@/components/drive-route-map';
+import { ClipPlayer } from '@/components/clip-player';
+import { RouteMap } from '@/components/maps/route-map';
 import { ThemedText } from '@/components/themed-text';
 import { Card } from '@/components/ui/card';
 import { QueryState } from '@/components/ui/query-state';
@@ -11,6 +12,7 @@ import { Screen } from '@/components/ui/screen';
 import { Stat, StatRow } from '@/components/ui/stat';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { listClips } from '@/lib/clips';
 import { getDrive } from '@/lib/drives';
 import { formatDuration, formatMiles, formatMph, formatWhen } from '@/lib/format';
 import { useAsync } from '@/lib/use-async';
@@ -20,6 +22,7 @@ const EVENT_LABELS: Record<DriveEvent['type'], string> = {
   speeding: 'Speeding',
   hard_brake: 'Hard brake',
   rapid_accel: 'Rapid acceleration',
+  harsh_corner: 'Fast through a bend',
   phone_distraction: 'Phone distraction',
   loud_audio: 'Loud in the car',
 };
@@ -28,6 +31,7 @@ const EVENT_LABELS: Record<DriveEvent['type'], string> = {
 export default function DriveDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: drive, error, isLoading } = useAsync(() => getDrive(id), [id]);
+  const clips = useAsync(() => listClips(id), [id]);
 
   if (isLoading || error || !drive) {
     return (
@@ -45,9 +49,9 @@ export default function DriveDetailScreen() {
   const duration = drive.endedAt ? drive.endedAt - drive.startedAt : 0;
 
   return (
-    <Screen title={formatWhen(drive.startedAt)} subtitle={`${drive.driverName}'s drive`}>
+    <Screen title={formatWhen(drive.startedAt)} subtitle={`${drive.driverName}'s drive`} wide>
       <Card>
-        <DriveRouteMap route={drive.route} height={240} />
+        <RouteMap route={drive.route} height={240} />
         <StatRow>
           <Stat label="Distance" value={formatMiles(drive.distanceMeters)} unit="mi" />
           <Stat label="Duration" value={formatDuration(duration)} />
@@ -62,6 +66,31 @@ export default function DriveDetailScreen() {
           />
           <Stat label="GPS points" value={`${drive.route.length}`} />
         </StatRow>
+      </Card>
+
+      <Card title="Dashcam" meta={clips.data?.length ? `${clips.data.length} saved` : ''}>
+        <QueryState
+          isLoading={clips.isLoading}
+          error={clips.error}
+          isEmpty={!clips.isLoading && (clips.data?.length ?? 0) === 0}
+          emptyMessage="No clips were saved on this drive."
+        />
+
+        <View style={styles.clips}>
+          {(clips.data ?? []).map((clip) => (
+            <View key={clip.id} style={styles.clip}>
+              <View style={styles.clipHeader}>
+                <ThemedText type="smallBold">
+                  {clip.reason === 'loud_audio' ? 'Kept automatically — loud' : 'Saved by driver'}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {formatWhen(clip.recordedAt)} · {Math.round(clip.durationSeconds)}s
+                </ThemedText>
+              </View>
+              <ClipPlayer clip={clip} />
+            </View>
+          ))}
+        </View>
       </Card>
 
       {drive.audioLevels.length > 0 ? (
@@ -125,6 +154,18 @@ function EventRow({ event }: { event: DriveEvent }) {
 }
 
 const styles = StyleSheet.create({
+  clips: {
+    gap: Spacing.four,
+  },
+  clip: {
+    gap: Spacing.two,
+  },
+  clipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
   events: {
     gap: Spacing.three,
   },

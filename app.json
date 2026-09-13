@@ -18,7 +18,7 @@
     "android": {
       "package": "com.drivesafe.app",
       "adaptiveIcon": {
-        "backgroundColor": "#0B1220",
+        "backgroundColor": "#EAF6EE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -30,7 +30,7 @@
       ]
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -38,13 +38,15 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "DriveSafe uses your location to record your drive route and speed so your safety scores stay accurate."
+          "locationWhenInUsePermission": "DriveSafe uses your location to record your drive route and speed so your safety scores stay accurate.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false
         }
       ],
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0B1220",
+          "backgroundColor": "#EAF6EE",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
@@ -53,9 +55,19 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "DriveSafe measures how loud it is in the car so it can warn you when noise gets distracting. Audio is measured on your phone and is never recorded, saved, or uploaded."
+          "microphonePermission": "DriveSafe uses the microphone two ways: it measures how loud the car is so it can warn you when noise gets distracting, and it records sound on dashcam clips you choose to keep. Loudness readings are never stored as audio."
         }
-      ]
+      ],
+      "expo-video",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "DriveSafe records a dashcam loop while you drive and keeps only the last twenty seconds or so, so you can save what just happened.",
+          "microphonePermission": "DriveSafe uses the microphone two ways: it measures how loud the car is so it can warn you when noise gets distracting, and it records sound on dashcam clips you choose to keep. Loudness readings are never stored as audio.",
+          "recordAudioAndroid": true
+        }
+      ],
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,

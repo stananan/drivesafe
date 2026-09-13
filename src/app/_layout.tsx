@@ -1,9 +1,7 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -34,13 +32,14 @@ function SplashGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// SDK 57's expo-router no longer runs on @react-navigation, so the
+// ThemeProvider that used to wrap everything has nothing left to theme — the
+// app's own theme system covers every screen, and header colours come from
+// screenOptions if they ever need to differ from the defaults.
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <SessionProvider>
             <SplashGate>
               <StatusBar style="auto" />
@@ -65,7 +64,6 @@ export default function RootLayout() {
               </Stack>
             </SplashGate>
           </SessionProvider>
-        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

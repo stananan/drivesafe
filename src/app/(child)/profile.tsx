@@ -36,7 +36,7 @@ export default function ChildProfileScreen() {
   const granted = permission === Location.PermissionStatus.GRANTED;
 
   async function togglePreference(
-    key: 'audioAlertsEnabled' | 'locationSharing',
+    key: 'audioAlertsEnabled' | 'dashcamEnabled' | 'locationSharing',
     next: boolean
   ) {
     const { error } = await setPreference(key, next);
@@ -46,7 +46,7 @@ export default function ChildProfileScreen() {
   function confirmLeave() {
     Alert.alert(
       'Leave this family?',
-      'Your drives stay saved, but your family will stop seeing new ones until you rejoin.',
+      'Your drives and clips stay yours, but your family loses access to all of them — not just new ones. Rejoining later does not give them back.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Leave', style: 'destructive', onPress: () => void leaveFamily() },
@@ -85,6 +85,30 @@ export default function ChildProfileScreen() {
           While you are driving, DriveSafe measures how loud it is using the microphone. If it stays
           loud you get a warning on screen and your family is told. Nothing is recorded, saved, or
           uploaded — only the loudness reading ever leaves your phone.
+        </ThemedText>
+      </Card>
+
+      <Card title="Dashcam">
+        <View style={styles.toggleRow}>
+          <ThemedText type="small" style={styles.toggleLabel}>
+            Record while I drive
+          </ThemedText>
+          <Switch
+            value={profile?.dashcamEnabled ?? false}
+            onValueChange={(next) => void togglePreference('dashcamEnabled', next)}
+            trackColor={{ true: theme.tint, false: theme.border }}
+          />
+        </View>
+
+        <ThemedText type="small" themeColor="textSecondary">
+          The camera records on a loop and keeps the last twenty seconds or so — everything older
+          is deleted on your phone without ever being sent anywhere. Tap Save that during a drive,
+          or let DriveSafe keep a clip automatically when it gets loud.
+        </ThemedText>
+
+        <ThemedText type="small" themeColor="textSecondary">
+          Clips include sound, like any other dashcam. Anyone riding with you can be heard on one
+          you keep, so bear that in mind before saving.
         </ThemedText>
       </Card>
 

@@ -14,8 +14,53 @@ export type Profile = {
   familyId: string | null;
   /** Whether audio distraction alerts run during this driver's drives. */
   audioAlertsEnabled: boolean;
+  /** Whether the dashcam records while this driver is on a drive. */
+  dashcamEnabled: boolean;
   /** Whether this person broadcasts their position to the family. */
   locationSharing: boolean;
+  /**
+   * True once this account has ever been in a family. Distinguishes an
+   * abandoned sign-up from an account that has since left one.
+   */
+  everJoinedFamily: boolean;
+};
+
+/** Why a dashcam clip was kept instead of being overwritten. */
+export type DriveClipReason = 'manual' | 'loud_audio';
+
+/**
+ * One saved stretch of dashcam footage.
+ *
+ * Several files rather than one: the camera records fixed-length segments, and
+ * nothing in an Expo app can join them, so the player runs the parts in order.
+ */
+export type DriveClip = {
+  id: string;
+  reason: DriveClipReason;
+  /** Unix epoch milliseconds at the start of the earliest part. */
+  recordedAt: number;
+  durationSeconds: number;
+  /** False when the phone refused to record sound alongside loudness monitoring. */
+  hasAudio: boolean;
+  /** What the driver named it. Null means fall back to why it was kept. */
+  title: string | null;
+  parts: {
+    index: number;
+    /** Short-lived signed URL, or null when the file could not be signed. */
+    url: string | null;
+    /** The same file, asked for as an attachment rather than a stream. */
+    downloadUrl: string | null;
+    durationSeconds: number;
+    bytes: number;
+  }[];
+};
+
+/** A clip as the Clips tab sees it: with the drive and driver it belongs to. */
+export type FamilyClip = DriveClip & {
+  driveId: string;
+  driverName: string;
+  /** Unix epoch milliseconds the drive began. */
+  driveStartedAt: number;
 };
 
 /** One cabin-loudness reading taken during a drive. */
@@ -51,6 +96,7 @@ export type DriveEventType =
   | 'speeding'
   | 'hard_brake'
   | 'rapid_accel'
+  | 'harsh_corner'
   | 'phone_distraction'
   | 'loud_audio';
 

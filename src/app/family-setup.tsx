@@ -1,12 +1,12 @@
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { FormWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/lib/session';
 
@@ -21,9 +21,43 @@ export default function FamilySetupScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { profile, createFamily, joinFamily, signOut } = useSession();
+  const { isLoading, session, profile, createFamily, joinFamily, signOut, deleteAccount } =
+    useSession();
 
   const isParent = profile?.role === 'parent';
+
+  // An account that has never been in a family has nothing behind it: no drives,
+  // no clips, nothing anyone else can see. Leaving here means abandoning a
+  // half-finished sign-up, so it goes rather than lingering as a row nobody can
+  // reach. An account that has *left* a family is a different thing entirely and
+  // only signs out.
+  const isAbandonedSignup = Boolean(profile) && !profile!.everJoinedFamily;
+
+  function confirmLeave() {
+    if (!isAbandonedSignup) {
+      void signOut();
+      return;
+    }
+
+    Alert.alert(
+      'Leave without a family?',
+      'Your account is not finished — it has no family and nothing in it. Leaving now deletes it, and you can sign up again whenever you like.',
+      [
+        { text: 'Keep setting up', style: 'cancel' },
+        {
+          text: 'Delete and leave',
+          style: 'destructive',
+          onPress: () => {
+            void deleteAccount().then(({ error: deleteError }) => {
+              // If the account could not be removed, at least do not strand them
+              // on a screen they cannot leave.
+              if (deleteError) void signOut();
+            });
+          },
+        },
+      ]
+    );
+  }
 
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +65,11 @@ export default function FamilySetupScreen() {
 
   const trimmed = value.trim();
   const canSubmit = isParent ? trimmed.length > 0 : trimmed.length === 6;
+
+  // This screen had no guard, so signing out from it cleared the session and
+  // then sat there over nothing — which is what "sign out does not work" looks
+  // like from the outside.
+  if (!isLoading && !session) return <Redirect href={'/(auth)/sign-in' as never} />;
 
   async function handleSubmit() {
     if (!canSubmit || isSubmitting) return;
@@ -121,7 +160,11 @@ export default function FamilySetupScreen() {
             <ThemedText type="small" themeColor="textSecondary" style={styles.footerText}>
               Signed in as {profile?.username ?? 'your account'}.
             </ThemedText>
-            <Button label="Sign out" variant="secondary" onPress={() => void signOut()} />
+            <Button
+              label={isAbandonedSignup ? 'Cancel and delete account' : 'Sign out'}
+              variant="secondary"
+              onPress={confirmLeave}
+            />
           </View>
         </View>
       </ScrollView>
@@ -140,7 +183,9 @@ const styles = StyleSheet.create({
   },
   content: {
     width: '100%',
-    maxWidth: MaxContentWidth,
+    // A form is read down, not across. At the page's full width the fields
+    // stretch to a size no one wants to type into.
+    maxWidth: FormWidth,
     flex: 1,
     gap: Spacing.five,
   },
@@ -152,6 +197,9 @@ const styles = StyleSheet.create({
   },
   codeInput: {
     fontSize: 28,
+    // Same trap as the code displays elsewhere: a large fontSize needs its own
+    // lineHeight or the glyphs are clipped by the inherited 24.
+    lineHeight: 36,
     letterSpacing: 8,
     textAlign: 'center',
     minHeight: 64,
