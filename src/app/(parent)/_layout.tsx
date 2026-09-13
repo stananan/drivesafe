@@ -1,6 +1,5 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Redirect } from 'expo-router';
-import { Icon, Label, NativeTabs, VectorIcon } from 'expo-router/unstable-native-tabs';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useColorScheme } from 'react-native';
 
 import { Colors } from '@/constants/theme';
@@ -9,6 +8,10 @@ import { useRouteGuard } from '@/lib/use-route-guard';
 /**
  * The parent's app answers three questions in order: where are they right now,
  * how have they been driving, and who is linked to me.
+ *
+ * SDK 57 note: the old Icon/Label imports and the VectorIcon Android wiring
+ * became compound components with `sf` (SF Symbol, iOS) and `md` (Material
+ * glyph, Android) props on one element.
  */
 export default function ParentLayout() {
   const scheme = useColorScheme();
@@ -26,32 +29,23 @@ export default function ParentLayout() {
       indicatorColor={colors.backgroundSelected}
       labelStyle={{ color: colors.textSecondary }}>
       <NativeTabs.Trigger name="index">
-        <Label>Live</Label>
-        <Icon
-          sf="location.fill"
-          androidSrc={<VectorIcon family={MaterialIcons} name="my-location" />}
-        />
+        <NativeTabs.Trigger.Label>Live</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="location.fill" md="my_location" />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="drives">
-        <Label>Drives</Label>
-        <Icon
-          sf="list.bullet.rectangle"
-          androidSrc={<VectorIcon family={MaterialIcons} name="list-alt" />}
-        />
+        <NativeTabs.Trigger.Label>Drives</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="list.bullet.rectangle" md="list_alt" />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="clips">
-        <Label>Clips</Label>
-        <Icon sf="film.fill" androidSrc={<VectorIcon family={MaterialIcons} name="movie" />} />
+        <NativeTabs.Trigger.Label>Clips</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="film.fill" md="movie" />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="settings">
-        <Label>Settings</Label>
-        <Icon
-          sf="gearshape.fill"
-          androidSrc={<VectorIcon family={MaterialIcons} name="settings" />}
-        />
+        <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="gearshape.fill" md="settings" />
       </NativeTabs.Trigger>
     </NativeTabs>
   );

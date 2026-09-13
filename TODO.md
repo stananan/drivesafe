@@ -122,6 +122,14 @@ worked; what it turned up was five rough edges, all since fixed.
 
 ## Known gaps in what is built
 
+- [ ] **Migrate the patterns the React Compiler lint flags.** SDK 57 turned the
+  compiler's rules on as errors; they are downgraded to warnings in
+  eslint.config.js because they flag thirteen pre-existing sites — latest-value
+  refs assigned during render, state resets in effects. The code works and the
+  compiler skips rather than miscompiles what it cannot prove, but each warning
+  is a component that is not getting compiler optimisation. Migrate a site,
+  watch the warning go, repeat.
+
 - [ ] **Recording is foreground-only.** `use-drive-tracker.ts` uses
   `watchPositionAsync` with a when-in-use permission and holds the screen awake.
   Lock the phone or switch apps and point collection stops. Fixing it means a
