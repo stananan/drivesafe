@@ -33,6 +33,14 @@ shadow the bundle or the assets.
 **The build command runs `scripts/check-env.js` first**, which is what turns a
 missing key into a failed build rather than a broken site.
 
+**The install command skips dev dependencies.** Not an optimisation — npm writes
+a lock entry for `@unrs/resolver-binding-openharmony-arm64` with no version
+field at all, and a Linux npm resolving it fails the whole install with
+`Invalid Version:`. It arrives under the eslint tooling, which a build does not
+need, so `--omit=dev` never reaches it. Regenerating the lock does not help: npm
+writes the same broken entry every time. Deleting the entry by hand does not
+help either — the lock then fails `npm ci` for being out of sync.
+
 The other two set the output directory and cache the hashed bundle forever.
 
 Do not add `comment` fields to entries in this file. Vercel validates it against
