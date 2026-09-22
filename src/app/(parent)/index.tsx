@@ -302,40 +302,51 @@ function DriverRow({
   const isDriving = driver.activeDriveId !== null;
   const hasLocation = driver.lastLocation !== null;
 
+  // The row and the Watch pill are two separate actions, so they are siblings
+  // inside a plain View rather than one wrapped in the other. Nesting them read
+  // fine on a phone but produced a <button> inside a <button> on the web
+  // dashboard — invalid HTML, and it left the inner control's clicks ambiguous.
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: isSelected }}
-      onPress={onPress}
-      disabled={!hasLocation}
-      style={({ pressed }) => [
+    <View
+      style={[
         styles.driverRow,
         {
           backgroundColor: isSelected ? theme.backgroundSelected : theme.backgroundElement,
           borderColor: isSelected ? theme.tint : theme.border,
-          opacity: pressed || !hasLocation ? 0.75 : 1,
+          opacity: hasLocation ? 1 : 0.75,
         },
       ]}>
-      <View style={[styles.avatar, { backgroundColor: isDriving ? theme.success : theme.tint }]}>
-        <ThemedText style={[styles.avatarInitial, { color: theme.onTint }]}>
-          {driver.name.charAt(0).toUpperCase()}
-        </ThemedText>
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected: isSelected }}
+        accessibilityLabel={`Show ${driver.name} on the map`}
+        onPress={onPress}
+        disabled={!hasLocation}
+        style={({ pressed }) => [styles.driverMain, { opacity: pressed ? 0.75 : 1 }]}>
+        <View style={[styles.avatar, { backgroundColor: isDriving ? theme.success : theme.tint }]}>
+          <ThemedText style={[styles.avatarInitial, { color: theme.onTint }]}>
+            {driver.name.charAt(0).toUpperCase()}
+          </ThemedText>
+        </View>
 
-      <View style={styles.driverText}>
-        <ThemedText type="smallBold">{driver.name}</ThemedText>
-        <ThemedText
-          type="small"
-          style={{ color: isDriving ? theme.success : theme.textSecondary }}>
-          {isDriving
-            ? driver.activeAudioMonitoring
-              ? 'Driving now · audio alerts on'
-              : 'Driving now'
-            : hasLocation
-              ? `Parked · updated ${formatRelative(driver.lastSeenAt ?? Date.now())}`
-              : 'Not sharing location'}
-        </ThemedText>
-      </View>
+        <View style={styles.driverText}>
+          <ThemedText type="smallBold">{driver.name}</ThemedText>
+          <ThemedText
+            type="small"
+            style={{ color: isDriving ? theme.success : theme.textSecondary }}>
+            {isDriving
+              ? driver.activeAudioMonitoring
+                ? 'Driving now · audio alerts on'
+                : 'Driving now'
+              : hasLocation
+                ? `Parked · updated ${formatRelative(driver.lastSeenAt ?? Date.now())}`
+                : 'Not sharing location'}
+          </ThemedText>
+        </View>
+
+        {/* Not interactive, so it stays inside the row's press target. */}
+        {isDriving ? null : <ScoreBadge score={driver.weekScore} showLabel={false} />}
+      </Pressable>
 
       {isDriving ? (
         <Pressable
@@ -351,10 +362,8 @@ function DriverRow({
             Watch
           </ThemedText>
         </Pressable>
-      ) : (
-        <ScoreBadge score={driver.weekScore} showLabel={false} />
-      )}
-    </Pressable>
+      ) : null}
+    </View>
   );
 }
 
@@ -446,6 +455,13 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     borderWidth: StyleSheet.hairlineWidth,
     padding: Spacing.three,
+  },
+  // The tappable part of the row: everything except the Watch pill beside it.
+  driverMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
   },
   avatar: {
     width: 40,

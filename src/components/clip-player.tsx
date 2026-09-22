@@ -18,6 +18,26 @@ import type { DriveClip } from '@/types/drive';
 /** Fast enough that the scrubber tracks the video rather than lagging behind it. */
 const TICK_MS = 250;
 
+/**
+ * What shape to assume before the player reports one.
+ *
+ * Portrait, because the app is locked to portrait in `app.json`, so the camera
+ * records upright and every clip in the system is taller than it is wide. This
+ * is also the shape used everywhere `videoTrack` is unavailable, which includes
+ * the web dashboard.
+ */
+const ASSUMED_ASPECT = 9 / 16;
+
+/**
+ * How tall an upright clip is allowed to be.
+ *
+ * Portrait footage stretched to the width of a dashboard card becomes a column
+ * of video taller than the browser window, which is a worse way to watch it
+ * than a small one. So an upright clip is sized by its height and left at its
+ * natural width — a phone-shaped picture, the shape it was filmed in.
+ */
+const PORTRAIT_HEIGHT = 420;
+
 /** Seconds as m:ss. Clips are short; hours would be noise. */
 function timecode(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -51,6 +71,7 @@ export function ClipPlayer({ clip }: { clip: DriveClip }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [aspect, setAspect] = useState(ASSUMED_ASPECT);
   const [trackWidth, setTrackWidth] = useState(0);
   const trackRef = useRef<View | null>(null);
   const trackLeft = useRef(0);
@@ -68,6 +89,20 @@ export function ClipPlayer({ clip }: { clip: DriveClip }) {
       setIsPlaying(player.playing);
       setPosition(finite(player.currentTime));
       setDuration(finite(player.duration));
+
+      // The real shape of this particular clip, once the track has loaded.
+      // Read here rather than through a listener because the tick is already
+      // running, and it is null on web, where the assumed portrait stands.
+      const size = player.videoTrack?.size;
+      if (size && size.width > 0 && size.height > 0) {
+        const measured = size.width / size.height;
+
+        if (Number.isFinite(measured)) {
+          // Compared before setting so a steady reading does not re-render the
+          // player four times a second.
+          setAspect((current) => (Math.abs(measured - current) > 0.01 ? measured : current));
+        }
+      }
     }, TICK_MS);
 
     return () => clearInterval(timer);
@@ -157,15 +192,38 @@ export function ClipPlayer({ clip }: { clip: DriveClip }) {
 
   const progress = duration > 0 ? Math.min(1, position / duration) : 0;
 
+  // Upright footage is sized by its height so it stays phone-shaped; a
+  // landscape clip is sized by the width available to it. Either way the box
+  // matches the picture, so there is nothing to letterbox.
+  const isPortrait = aspect < 1;
+
   return (
     <View style={styles.wrap}>
-      <View style={styles.video}>
+      <View
+        style={[
+          styles.video,
+          isPortrait
+            ? { height: PORTRAIT_HEIGHT, aspectRatio: aspect }
+            : { width: '100%', aspectRatio: aspect },
+        ]}>
         <VideoView
           player={player}
-          style={StyleSheet.absoluteFill}
-          // `cover` filled the box by cropping, which on a wide card threw away
-          // most of the frame — the whole point of a dashcam clip is what is at
-          // the edges of it. `contain` letterboxes instead, so nothing is lost.
+          // Explicit 100%/100% rather than StyleSheet.absoluteFill, which is
+          // broken here on the web dashboard and only there.
+          //
+          // On web this component renders a plain <video> and hands the style
+          // straight to the DOM. absoluteFill is left/right/top/bottom: 0 with
+          // no width or height, and for a *replaced* element — video, img — CSS
+          // resolves width:auto to the intrinsic width and then drops the
+          // over-constrained `right`. So the element laid itself out at the
+          // clip's full pixel size inside a much smaller box, and overflow:
+          // hidden cropped the difference. Yoga stretches absoluteFill properly,
+          // which is why the phone was always correct.
+          style={styles.videoSurface}
+          // `cover` filled the box by cropping, which threw away most of the
+          // frame — the whole point of a dashcam clip is what is at the edges
+          // of it. `contain` never crops, and it is also the safety net for a
+          // clip whose real shape is not what was assumed.
           contentFit="contain"
           nativeControls={false}
         />
@@ -246,18 +304,24 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   video: {
-    // Sized by the card rather than pinned to 200px. A fixed height made a 4:1
-    // slot out of an 800px-wide card, which is not a shape any video is.
+    // No width or aspect here: both are decided per clip from the shape the
+    // player reports, because the one thing worse than a letterboxed clip is a
+    // clip forced into a box that is not its shape.
     //
-    // Horizontal on both platforms, deliberately. A phone could show portrait
-    // footage upright and fill more of its screen, but a clip is watched on the
-    // dashboard as often as on the phone, and one shape means a clip looks the
-    // same wherever it is opened. Letterboxing is the price and it is worth it.
-    width: '100%',
-    aspectRatio: 16 / 9,
+    // Centred rather than stretched. Upright footage is narrow, and a narrow
+    // picture pinned to the left of a wide dashboard card reads as broken
+    // rather than deliberate.
+    alignSelf: 'center',
+    maxWidth: '100%',
     borderRadius: Radius.medium,
     overflow: 'hidden',
     backgroundColor: '#000',
+  },
+  // Fills the box above on both platforms. See the note at the call site for
+  // why this cannot be StyleSheet.absoluteFill.
+  videoSurface: {
+    width: '100%',
+    height: '100%',
   },
   unavailable: {
     borderWidth: StyleSheet.hairlineWidth,

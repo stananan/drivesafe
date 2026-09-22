@@ -18,8 +18,9 @@ submit".
 The first drive produced five changes — a real live map, calmer noise
 thresholds, screams keeping clips, and a padding fix. All of them need seeing in
 a car. The noise thresholds especially: they moved on the strength of one drive,
-and the failure mode has flipped from firing constantly to possibly never
-firing at all.
+the failure mode flipped from firing constantly to never firing at all, and they
+have since moved back the other way past where they started. Every loud alert
+now keeps a clip, not only a scream.
 
 **2. Try the parent dashboard in a browser while that happens.**
 It compiles and the maps have browser implementations, but no parent has watched
@@ -76,8 +77,12 @@ find. Put a reminder somewhere.
 - [ ] **Re-check the audio thresholds on a second drive.** The first road test
   had them firing on wind and road noise, so the threshold moved from -12 to -6
   dBFS and the sustain window from 1.5 s to 2.5 s. That is one data point, not a
-  calibration — the risk now is the opposite one, where nothing ever fires and
-  every drive scores 100. Noise is one of only two things that can cost points.
+  calibration — and the opposite failure duly arrived: at -6 dBFS, close to the
+  top of the meter, almost nothing reached the line. The threshold is now -14
+  and the scream tier -8, which is *below* the value the first road test
+  rejected, so this genuinely needs a drive to settle. Every alert also keeps a
+  dashcam clip now, so firing too easily costs storage rather than just
+  attention. Noise is one of only two things that can cost points.
   `LOUD_THRESHOLD_DBFS`, `SCREAM_THRESHOLD_DBFS`, `SUSTAIN_MS` and
   `COOLDOWN_MS` in
   `src/lib/use-audio-monitor.ts` are guesses. Both the drive screen and the
@@ -267,8 +272,10 @@ private Supabase bucket, and playback on the drive detail screen.
 
 ## Nice to have
 
-- [ ] Rolling-buffer dashcam and the `"DriveSafe, save that"` voice trigger —
-  still listed as Coming Soon on the drive screen.
+- [ ] The `"DriveSafe, save that"` voice trigger. Not built, and no longer
+  advertised: the Coming Soon card that promised it has been removed from the
+  drive screen, because a feature listed as coming is a promise and this one has
+  no date on it.
 - [ ] `phone_distraction` is in the event enum and the scoring docs but nothing
   ever raises one.
 - [x] Real speed limits from OpenStreetMap. `npm run check-limits` verifies the
