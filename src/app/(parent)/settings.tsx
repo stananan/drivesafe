@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { StyleSheet, Switch, View } from 'react-native';
+import { useCallback } from 'react';
+import { StyleSheet, View } from 'react-native';
 
 import { AboutCard } from '@/components/about-card';
 import { DeleteAccountCard } from '@/components/delete-account-card';
@@ -33,11 +33,6 @@ export default function ParentSettingsScreen() {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
   );
-
-  // Local-only for now; these move to the parent's profile row with push.
-  const [alertOnSpeeding, setAlertOnSpeeding] = useState(true);
-  const [alertOnHardBrake, setAlertOnHardBrake] = useState(true);
-  const [alertOnDriveEnd, setAlertOnDriveEnd] = useState(false);
 
   async function confirmLeave() {
     const ok = await confirmAction({
@@ -99,21 +94,6 @@ export default function ParentSettingsScreen() {
         </View>
       </Card>
 
-      <Card title="Alerts">
-        <View style={styles.rows}>
-          <ToggleRow label="Speeding" value={alertOnSpeeding} onChange={setAlertOnSpeeding} />
-          <ToggleRow label="Hard braking" value={alertOnHardBrake} onChange={setAlertOnHardBrake} />
-          <ToggleRow
-            label="Every completed drive"
-            value={alertOnDriveEnd}
-            onChange={setAlertOnDriveEnd}
-          />
-        </View>
-        <ThemedText type="small" themeColor="textSecondary">
-          Push delivery is not wired up yet — these preferences are saved on this device.
-        </ThemedText>
-      </Card>
-
       <Card title="Account">
         <View style={styles.rows}>
           <View style={styles.row}>
@@ -139,29 +119,6 @@ export default function ParentSettingsScreen() {
         substitute for talking to them about it.
       </ThemedText>
     </Screen>
-  );
-}
-
-function ToggleRow({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  const theme = useTheme();
-
-  return (
-    <View style={styles.row}>
-      <ThemedText type="small">{label}</ThemedText>
-      <Switch
-        value={value}
-        onValueChange={onChange}
-        trackColor={{ true: theme.tint, false: theme.border }}
-      />
-    </View>
   );
 }
 

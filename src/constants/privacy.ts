@@ -11,10 +11,10 @@
  * this file has to change in the same commit.
  */
 
-export const PrivacyPolicyUpdated = 'August 15, 2026';
+export const PrivacyPolicyUpdated = 'September 22, 2026';
 
-/** Fill this in before submitting; App Review will email it. */
-export const PrivacyContactEmail = 'TODO — add a monitored email address';
+/** Where App Review and users reach a human. */
+export const PrivacyContactEmail = 'stanleyho862@gmail.com';
 
 export type PrivacySection = {
   title: string;
@@ -25,79 +25,63 @@ export const PrivacyPolicySections: PrivacySection[] = [
   {
     title: 'The short version',
     paragraphs: [
-      'DriveSafe records a drive so a teen driver and their parent can both see how it went. Location is collected only while a drive is recording, it is visible only to members of your own family, and deleting your account erases all of it.',
+      'DriveSafe records a drive so a teen driver and their parent can both see how it went. Location is collected only while a drive is recording, everything is visible only to your own family, and deleting your account erases all of it.',
       'We do not sell your data, show ads, or use third-party analytics.',
     ],
   },
   {
     title: 'What DriveSafe collects',
     paragraphs: [
-      'Account details: your email address, your username, and whether you signed up as a parent or a driver. Your password is handled by our authentication provider and DriveSafe never sees it in readable form.',
-      'Recorded drives: while a drive is recording, DriveSafe saves GPS coordinates, speed, accuracy, and timestamps as your position updates. Together these make the route shown on the drive detail screen.',
-      'Drive summaries: distance, duration, top speed, average speed, a safety score, and flagged moments such as speeding, hard braking, or rapid acceleration.',
-      'Live location: while location sharing is on, DriveSafe stores your most recent position so your family can see you on the map. Only the latest position is kept — each update overwrites the one before it, so this is not a location history.',
-      'How loud it is, only if you turn audio alerts on: see the section below.',
-      'Notification tokens: if you allow notifications, DriveSafe stores the anonymous token your phone issues, so a driver’s phone can send an alert to their parents.',
+      'Account details: email address, username, and whether you signed up as a parent or a driver. Your password is handled by our authentication provider and DriveSafe never sees it in readable form.',
+      'Recorded drives: GPS coordinates, speed, accuracy and timestamps while a drive is recording, which together make the route.',
+      'Drive summaries: distance, duration, top speed, average speed, a safety score, and flagged moments such as speeding or hard braking.',
+      'Live location: your most recent position while location sharing is on, so your family can see you on the map. Each update overwrites the last, so this is not a location history.',
+      'How loud it is, only if you turn audio alerts on: see below.',
+      'Notification tokens: if you allow notifications, the anonymous token your phone issues, so a driver’s phone can alert their parents.',
+      'Location is collected only while you are recording a drive and DriveSafe is open on screen. There is no background tracking: locking your phone or switching apps stops the recording. You can turn sharing off from the Map screen, or revoke the permission in your device settings.',
     ],
   },
   {
-    title: 'Audio distraction alerts',
+    title: 'Microphone and camera',
     paragraphs: [
-      'This feature is off by default. A driver turns it on themselves, one drive at a time, and can turn it off mid-drive.',
-      'While it is on, DriveSafe reads your microphone’s level meter — a single number describing how loud the car is. It does not listen to, transcribe, analyse, store, or upload the audio itself. Because phones will only produce a level meter while a recording is active, a temporary file is written to your phone; DriveSafe deletes it as soon as monitoring stops, and it never leaves the device.',
-      'If the car stays loud for a few seconds, DriveSafe warns the driver on screen and tells their parents that it happened. What gets saved and shared is the fact of the alert, when it happened, how loud it was, and where — never any sound.',
-      'While alerts are on, DriveSafe also saves a loudness reading about once a second for the drive, so your family can see a graph of how noisy the car was — both while you are driving and afterwards on the drive. These readings are numbers only. They are deleted along with the drive, and deleting your account removes them entirely.',
-    ],
-  },
-  {
-    title: 'Dashcam',
-    paragraphs: [
-      'This feature is off by default and only a driver can turn it on, from their profile.',
-      'While it is on and a drive is recording, the camera records continuously and keeps only the last twenty seconds or so. Everything older is deleted on the phone and is never sent anywhere. Footage leaves the phone only when a clip is deliberately kept — either because the driver tapped Save that, or because DriveSafe flagged the car as loud.',
-      'Saved clips include sound, as a dashcam normally would — which means anyone riding in the car can be heard on a clip the driver keeps. Clips are stored privately and are visible to your family and nobody else. Deleting the drive or your account deletes them.',
+      'Both are off by default, and only a driver can turn either on from their profile.',
+      'Audio alerts read your microphone’s level meter — a single number describing how loud the car is. DriveSafe does not listen to, transcribe, store or upload the audio itself. Phones only produce a level meter while a recording is active, so a temporary file is written to your phone and deleted the moment monitoring stops; it never leaves the device. If the car stays loud, the driver is warned on screen and their parents are told. What gets saved is the fact of the alert, when it happened, how loud it was, and where — never any sound. A loudness reading is also saved about once a second so your family can see a graph of the drive. These are numbers only.',
+      'The dashcam records continuously and keeps only the most recent stretch, roughly the last twenty to forty seconds. Everything older is deleted on the phone and never sent anywhere. Footage leaves the phone only when a clip is deliberately kept — because the driver asked for it, or because DriveSafe flagged the car as loud. Saved clips include sound, as a dashcam normally would, which means anyone riding along can be heard on a clip the driver keeps.',
+      'Outside a saved clip, audio is never kept. The camera runs only with the dashcam switched on, and only while a drive is recording.',
     ],
   },
   {
     title: 'What DriveSafe does not collect',
     paragraphs: [
-      'DriveSafe does not use your contacts or photos, and does not collect advertising identifiers. It contains no third-party analytics, advertising, or tracking software.',
-      'Outside a saved dashcam clip, audio is never kept. The loudness meter reads the microphone during a drive and writes nothing down; the temporary file it needs is deleted as soon as monitoring stops.',
-      'The camera is used only when the driver has switched the dashcam on, and only while a drive is recording.',
-    ],
-  },
-  {
-    title: 'When location is collected',
-    paragraphs: [
-      'Only while you are recording a drive and DriveSafe is open on screen. The app does not track location in the background — if you lock your phone or switch to another app, recording stops.',
-      'You can turn live location sharing off at any time from the toggle on the Map screen. You can also decline or revoke the location permission in your device settings, though drive recording cannot work without it.',
+      'No contacts, no photos, no advertising identifiers, and no third-party analytics, advertising or tracking software.',
     ],
   },
   {
     title: 'Who can see your data',
     paragraphs: [
-      "Only you and the members of your family. Family membership is enforced in the database itself through row-level security, so one family can never read another family's drives, positions, or profiles.",
-      'Parents in your family can see your recorded drives and their routes, your safety scores, your live position while sharing is on, whether a drive is happening right now, and any alerts raised during it.',
+      'Only you and the members of your family. Family membership is enforced in the database itself through row-level security, so one family can never read another’s drives, positions or profiles.',
+      'Parents in your family can see your recorded drives and routes, your safety scores, your live position while sharing is on, whether a drive is happening right now, and any alerts raised during it.',
       'We do not share personal data with anyone else, and we never sell it.',
     ],
   },
   {
     title: 'Where your data is stored',
     paragraphs: [
-      'DriveSafe stores accounts and drive data with Supabase, which provides our database, authentication, and hosting. Supabase processes this data on our behalf. Data travels over encrypted connections.',
+      'With Supabase, which provides our database, authentication and hosting, and processes this data on our behalf. Data travels over encrypted connections.',
     ],
   },
   {
     title: 'Deleting your data',
     paragraphs: [
-      'You can delete your account at any time — drivers from the Profile tab, parents from Settings. Deletion is immediate and permanent: your account, your recorded drives, their routes, and your stored position are erased and cannot be recovered.',
-      'If you are a parent, deleting your account also deletes the family. Other members keep their own accounts and drives, but the family code stops working and they will need a new one.',
+      'You can delete your account at any time — drivers from the Profile tab, parents from Settings. Deletion is immediate and permanent: your account, drives, routes and stored position are erased and cannot be recovered.',
+      'A parent deleting their account also deletes the family. Other members keep their own accounts and drives, but the family code stops working.',
       'If you only want to stop sharing, leaving the family keeps your drives and stops your family seeing new ones.',
     ],
   },
   {
     title: "Children's privacy",
     paragraphs: [
-      'DriveSafe is built for teen drivers and the parents who set up their family. It is not directed to children under 13 and we do not knowingly collect personal information from them. If you believe a child under 13 has created an account, contact us and we will delete it.',
+      'DriveSafe is built for teen drivers and the parents who set up their family. It is not directed to children under 13 and we do not knowingly collect personal information from them. If you believe a child under 13 has created an account, email us and we will delete it.',
     ],
   },
   {
