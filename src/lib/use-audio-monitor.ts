@@ -36,24 +36,36 @@ const MONITOR_RECORDING_OPTIONS: RecordingOptions = {
 
 /**
  * Level meters report dBFS: 0 is the loudest the microphone can encode and
- * roughly -160 is silence.
+ * roughly -160 is silence. The scale is logarithmic, so every 6 dB down is half
+ * the amplitude — small-looking moves here are not small.
  *
- * Raised from -12 after the first road test, where wind and road noise alone
- * were enough to trip it. A moving car is not a quiet room, and a threshold set
- * for one fires constantly in the other — which trains a driver to ignore the
- * warning, at which point the feature is worse than absent.
+ * History worth knowing before touching this again. It started at -12, was
+ * raised to -6 after the first road test because wind and road noise alone kept
+ * tripping it, and is now lowered to -14 because -6 sits so close to the top of
+ * the meter that almost nothing short of shouting into the phone reached it. A
+ * threshold nothing reaches is the same as no feature at all, which is the
+ * failure this is correcting.
+ *
+ * That does put it below the value the road test rejected, so this is the
+ * sensitive end of the range rather than a settled number — and every alert now
+ * keeps a dashcam clip, so a false positive costs storage as well as attention.
+ * `SUSTAIN_MS` below is the other half of the decision and the better dial to
+ * reach for first if this turns out to fire on road noise.
  */
-export const LOUD_THRESHOLD_DBFS = -6;
+export const LOUD_THRESHOLD_DBFS = -14;
 
 /**
- * The second tier: a shout, a scream, a genuine commotion — loud enough that it
- * is worth keeping the footage rather than only noting that it happened.
+ * The second tier: a shout, a scream, a genuine commotion.
  *
- * Well above the ordinary threshold on purpose. Music and conversation should
- * never reach it, because a dashcam that saves a clip every time the stereo goes
- * up fills a free storage tier in an afternoon.
+ * This used to be the line that decided whether footage was kept. It no longer
+ * is — every loud alert keeps a clip now — so all this tier does is change what
+ * the driver and their parents are told: "very loud" rather than "loud", and a
+ * message naming shouting rather than noise.
+ *
+ * Still kept well clear of the ordinary threshold, because a severity label
+ * that everything trips is not a severity label.
  */
-export const SCREAM_THRESHOLD_DBFS = -2;
+export const SCREAM_THRESHOLD_DBFS = -8;
 
 /**
  * The quiet end of the graph. Meters bottom out near -160 in true silence, which
