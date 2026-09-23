@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
+import { Logo } from '@/components/ui/logo';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/lib/session';
@@ -29,6 +30,7 @@ export default function ChildWebLayout() {
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
       <View style={styles.message}>
+        <Logo size={40} />
         <ThemedText type="subtitle">DriveSafe runs on your phone</ThemedText>
 
         <ThemedText type="small" themeColor="textSecondary">

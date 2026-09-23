@@ -13,8 +13,8 @@
  * quality is irrelevant to a number that only measures amplitude.
  *
  * The thresholds below are starting points, not calibrated values. Cabin noise
- * varies enormously between cars, phones, and mounting positions; see TODO.md
- * for the road-test tuning pass.
+ * varies enormously between cars, phones, and mounting positions, so these want
+ * a road test in the car they will actually run in.
  */
 
 import { File } from 'expo-file-system';

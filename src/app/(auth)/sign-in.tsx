@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
+import { Logo } from '@/components/ui/logo';
 import { FormWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/lib/session';
@@ -54,6 +55,7 @@ export default function SignInScreen() {
         keyboardShouldPersistTaps="handled">
         <View style={styles.content}>
           <View style={styles.hero}>
+            <Logo size={44} />
             <ThemedText type="title">DriveSafe</ThemedText>
             <ThemedText themeColor="textSecondary">Welcome back.</ThemedText>
           </View>

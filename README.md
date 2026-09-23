@@ -152,7 +152,6 @@ npm run build:web       # the dashboard, as it deploys
 | | |
 | --- | --- |
 | [SCORING.md](./SCORING.md) | how a drive is scored, and what was deliberately removed |
-| [TODO.md](./TODO.md) | what is outstanding, roughly in the order it will bite |
 | [docs/web-dashboard.md](./docs/web-dashboard.md) | why the browser build diverges from the phone |
 | [docs/deploy.md](./docs/deploy.md) | shipping the dashboard |
 | [docs/privacy-policy.md](./docs/privacy-policy.md) | the policy, written for hosting |

@@ -9,7 +9,8 @@
  * Recording is foreground-only: `watchPositionAsync` with a when-in-use
  * permission stops delivering once the app leaves the screen. That is why the
  * keep-awake lock below exists, and why the app declares no background location
- * entitlement. Making this survive a locked phone is tracked in TODO.md.
+ * entitlement. Making this survive a locked phone would need
+ * `expo-task-manager` and a development build.
  */
 
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
