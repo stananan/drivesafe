@@ -81,13 +81,6 @@ export function LandingPage() {
           </Line>
         </Section>
 
-        <Section title="What it does not do">
-          <Line>Record conversations. The microphone measures loudness, nothing else.</Line>
-          <Line>Track anyone who is not currently driving.</Line>
-          <Line>Show a drive to anybody outside your own family.</Line>
-          <Line>Sell data, show ads, or run analytics.</Line>
-        </Section>
-
         <Section title="Who made it">
           <Line>Stanley Ho — the app, the scoring and the backend.</Line>
           <Line>Nico Zametto — product and road testing.</Line>
