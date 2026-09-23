@@ -138,19 +138,24 @@ export default function DriveScreen() {
 
       setIsSavingClip(true);
 
-      // Waits for the recording to reach clip length before handing it over, so
-      // this can take a moment when a save lands just after one started.
-      const segment = await dashcam.flush();
+      // Returns immediately with whatever the camera was holding — one segment
+      // when the recording had run long enough to stand alone, two when the
+      // moment being asked for is in the file before it.
+      const segments = await dashcam.flush();
 
       try {
-        if (!segment) return;
+        if (segments.length === 0) return;
 
         await saveClip({
           driveId: id,
           reason,
-          recordedAt: segment.startedAt,
+          // The earliest part is when the clip begins.
+          recordedAt: segments[0].startedAt,
           hasAudio: clipAudio,
-          parts: [{ uri: segment.uri, durationSeconds: segment.durationSeconds }],
+          parts: segments.map((part) => ({
+            uri: part.uri,
+            durationSeconds: part.durationSeconds,
+          })),
         });
 
         setLastClipAt(Date.now());
@@ -160,7 +165,7 @@ export default function DriveScreen() {
           error instanceof Error ? error.message : 'Check your connection and try again.'
         );
       } finally {
-        dashcam.release(segment);
+        dashcam.release(segments);
         setIsSavingClip(false);
       }
     },
@@ -200,10 +205,10 @@ export default function DriveScreen() {
       });
     }
 
-    // Only the louder tier keeps footage. A clip for every raised stereo would
-    // fill the storage tier in an afternoon and bury the moments that matter;
-    // a scream is the case the dashcam exists for.
-    if (isScream) void keepClipRef.current('loud_audio').catch(() => {});
+    // Every loud alert keeps footage, not only the scream tier. The monitor
+    // already refuses to raise one more than once a minute, so this is bounded
+    // at a clip a minute rather than a clip a noise.
+    void keepClipRef.current('loud_audio').catch(() => {});
 
     if (who?.familyId) {
       void notifyFamilyParents({
@@ -211,7 +216,7 @@ export default function DriveScreen() {
         title: `You should call ${who.username}`,
         body: isScream
           ? 'DriveSafe heard shouting in the car and kept a clip.'
-          : 'It has got loud in the car while they are driving.',
+          : 'It has got loud in the car while they are driving. DriveSafe kept a clip.',
         data: { driveId: id, type: 'loud_audio' },
       });
     }
@@ -432,8 +437,7 @@ export default function DriveScreen() {
           </ThemedText>
           <ThemedText type="small" style={{ color: theme.onTint }}>
             It got {describeLevel(loudAlert.level)} in here. Loud cabins make it easy to miss a
-            siren — your family has been told.
-            {loudAlert.isScream ? ' The dashcam kept a clip of it.' : ''}
+            siren — your family has been told, and the dashcam kept a clip of it.
           </ThemedText>
         </View>
       ) : null}
@@ -595,28 +599,7 @@ export default function DriveScreen() {
           </ThemedText>
         </Card>
       ) : null}
-
-      {!isRecording ? (
-        <Card title="Coming soon">
-          <View style={styles.upcoming}>
-                        <UpcomingRow label='"DriveSafe, save that"' detail="Voice-triggered clip capture" />
-          </View>
-        </Card>
-      ) : null}
     </Screen>
-  );
-}
-
-function UpcomingRow({ label, detail }: { label: string; detail: string }) {
-  return (
-    <View style={styles.upcomingRow}>
-      <ThemedText type="small" style={styles.upcomingLabel}>
-        {label}
-      </ThemedText>
-      <ThemedText type="small" themeColor="textSecondary" style={styles.upcomingDetail}>
-        {detail}
-      </ThemedText>
-    </View>
   );
 }
 
@@ -647,21 +630,5 @@ const styles = StyleSheet.create({
   alertTitle: {
     fontSize: 19,
     fontWeight: '700',
-  },
-  upcoming: {
-    gap: Spacing.two,
-  },
-  upcomingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: Spacing.three,
-  },
-  upcomingLabel: {
-    flexShrink: 1,
-  },
-  upcomingDetail: {
-    flexShrink: 1,
-    textAlign: 'right',
   },
 });
