@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
+import { Logo } from '@/components/ui/logo';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -30,7 +31,7 @@ export function LandingPage() {
       contentContainerStyle={styles.content}>
       <View style={styles.page}>
         <View style={styles.header}>
-          <ThemedText style={styles.wordmark}>DriveSafe</ThemedText>
+          <Logo size={28} withWordmark />
           <Pressable onPress={() => router.push('/(auth)/sign-in' as never)}>
             <ThemedText type="small" style={{ color: theme.tint }}>
               Sign in
@@ -78,13 +79,6 @@ export function LandingPage() {
             Keeps the last twenty seconds of dashcam footage, saved when the driver asks or when
             the car gets loud.
           </Line>
-        </Section>
-
-        <Section title="What it does not do">
-          <Line>Record conversations. The microphone measures loudness, nothing else.</Line>
-          <Line>Track anyone who is not currently driving.</Line>
-          <Line>Show a drive to anybody outside your own family.</Line>
-          <Line>Sell data, show ads, or run analytics.</Line>
         </Section>
 
         <Section title="Who made it">
@@ -148,11 +142,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  wordmark: {
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: '700',
   },
   intro: {
     gap: Spacing.three,

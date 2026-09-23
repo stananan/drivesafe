@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
+import { Logo } from '@/components/ui/logo';
 import { FormWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/lib/session';
@@ -76,6 +77,7 @@ export default function SignUpScreen() {
         keyboardShouldPersistTaps="handled">
         <View style={styles.content}>
           <View style={styles.hero}>
+            <Logo size={40} />
             <ThemedText type="subtitle">Create your account</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {isWeb
