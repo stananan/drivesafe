@@ -11,7 +11,6 @@
  * Delivery caveat: Expo Go dropped remote push in SDK 53. Everything here is
  * correct and will deliver from a development or production build, but on Expo
  * Go `register()` fails and the app falls back to the in-app realtime alert.
- * See TODO.md.
  */
 
 import Constants from 'expo-constants';

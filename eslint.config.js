@@ -12,8 +12,7 @@ module.exports = defineConfig([
     // during render, state resets inside effects. Those predate the rules and
     // work; when the compiler meets one it skips optimising that component
     // rather than miscompiling it. Warnings keep them visible without blocking
-    // every commit behind a thirteen-site refactor. Migrating the patterns
-    // properly is in TODO.md.
+    // every commit behind a thirteen-site refactor.
     rules: {
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/refs': 'warn',

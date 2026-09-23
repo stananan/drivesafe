@@ -113,7 +113,8 @@ length would just make the same behaviour cost less on a longer trip.
 **Why it counts at all.** A loud cabin masks sirens and horns, and passenger
 noise is one of the strongest predictors of teen-driver crashes specifically.
 **Why it is capped in practice.** The alert threshold behind it
-(`LOUD_THRESHOLD_DBFS`) is still uncalibrated — see `TODO.md`.
+(`LOUD_THRESHOLD_DBFS`) is still uncalibrated: it is set from one road test,
+and cabin noise varies enormously between cars and mounting positions.
 
 ---
 
