@@ -1,157 +1,129 @@
 # DriveSafe
 
-Teen drivers and their parents, on the same page about every trip.
+A dashcam and safety score for new drivers, built for teenagers and their parents.
 
-DriveSafe records a drive's route, speed and safety events on the driver's
-phone, and gives their parent a live view plus a reviewable history. One app,
-two interfaces — and the driver sees everything the parent sees.
+A teen records their drive on their phone. Their parent sees the route, the speed,
+and anything worth talking about, either on their own phone or in a browser. The
+teen sees exactly the same thing. Nothing is hidden from the person being recorded.
 
-Built by **Stanley Ho** and **Nico Zametto** for the **Congressional App
-Challenge**, California District 2.
+Built by **Stanley Ho** and **Nico Zametto** for the Congressional App Challenge,
+California District 2.
 
-| | |
-| --- | --- |
-| **Drivers** | iOS and Android, through Expo Go |
-| **Parents** | the same app, or the web dashboard in a browser |
-| **Backend** | Supabase — Postgres, auth, storage, realtime |
+## What it does
 
----
+* Records the route, speed and distance of every drive.
+* Scores the drive against the real speed limit of each road, using OpenStreetMap
+  data rather than a guess.
+* Lets a parent watch a drive while it is happening.
+* Keeps a rolling dashcam buffer, saved when the driver asks for it or when the
+  car gets loud enough to be a distraction.
+* Warns the driver when the cabin gets noisy, because a loud car is one where you
+  miss a siren.
 
-## Run it
+The microphone measures how loud it is and nothing else. It does not record or
+transcribe what anyone says. Full detail is in the
+[privacy policy](./docs/privacy-policy.md).
+
+## Trying it out
+
+You need [Node.js](https://nodejs.org) and the **Expo Go** app from the App Store
+or Play Store.
 
 ```bash
 npm install
 npx expo start
 ```
 
-Install **Expo Go**, then scan the QR code with the Camera app. Press `w` in the
-same terminal to open the parent dashboard in a browser.
+Scan the QR code in your terminal with your phone's camera. Press `w` in the same
+terminal to open the parent dashboard in a browser.
 
-> **The project targets Expo SDK 57.** Expo Go supports exactly one SDK at a
-> time, so *"the project is incompatible with this version of Expo Go"* means the
-> two have drifted. Check the version on Expo Go's home screen, match `"expo"` in
-> `package.json`, then run `npx expo install --fix`.
+Your phone and computer need to be on the same Wi-Fi. If they are not, run
+`npx expo start --tunnel` instead.
 
-Phone and computer have to be on the same Wi-Fi. If they are not, use
-`npx expo start --tunnel`.
+Two things that trip people up:
 
-The iOS Simulator has no real GPS — **Features → Location → Freeway Drive**
-makes the speedometer move.
+**"Incompatible with this version of Expo Go."** Expo Go only supports one SDK at
+a time, and this project targets SDK 57. Check the version on Expo Go's home
+screen against `"expo"` in `package.json`, then run `npx expo install --fix`.
 
-## Supabase
+**The iOS Simulator has no GPS,** so the speedometer sits at zero. Turn on
+**Features → Location → Freeway Drive** and it will start moving.
 
-Accounts, families, drives and clips all live there.
+## Running your own copy
 
-```bash
-cp .env.example .env.local
-# fill in the two values from Supabase → Project Settings → API
-```
+Accounts, drives and saved clips live in [Supabase](https://supabase.com), which
+has a free tier that is plenty for this.
 
-Paste `supabase/schema.sql` into the dashboard SQL Editor and run it. It is safe
-to run repeatedly, so re-run the whole file after editing rather than patching
-tables by hand. `supabase/reset.sql` wipes every account when you want to start
-over.
+1. Create a Supabase project.
+2. Copy `.env.example` to `.env.local` and fill in the two values from
+   **Project Settings → API**.
+3. Open the SQL Editor, paste in `supabase/schema.sql`, and run it.
 
-`.env.local` is git-ignored. Only the anon key belongs in it — it ships inside
-the bundle, which is exactly why row-level security, not secrecy, is what
-protects the data. The service-role key must never go near this repo.
+The schema file is safe to run more than once, so if you change it, re-run the
+whole thing rather than patching tables by hand. `supabase/reset.sql` wipes every
+account if you want to start clean.
 
-## How accounts fit together
+Only the anon key belongs in `.env.local`. It ships inside the app bundle, which
+is why the data is protected by database row-level security rather than by keeping
+the key secret. The service-role key should never go anywhere near this repo.
 
-```
-parent signs up ──▶ creates a family ──▶ gets a 6-character code
-                                              │
-                                              ▼
-                          driver signs up ──▶ joins with that code
-                                              │
-                                              ▼
-                    driver records drives ──▶ parent sees them
-```
+## How accounts work
+
+A parent signs up and creates a family, which gives them a six-character code. A
+driver signs up and joins with that code. From then on the parent sees that
+driver's drives.
 
 A driver can use a code but cannot browse families, and nobody outside a family
-can read a single row belonging to it. That is enforced by row-level security in
-the database, not by the app.
+can read a single row belonging to it. That rule lives in the database, not in the
+app, so it holds even if the app has a bug.
 
----
-
-## Layout
+## For developers
 
 ```
 src/
-  app/                      expo-router routes (file path = URL)
-    index.tsx               role gate — sends each account where it belongs
-    index.web.tsx           the same gate, but strangers get the landing page
-    (auth)/                 sign in, sign up
-    family-setup.tsx        create a family, or join one with a code
-    (child)/                driver: Drive, Map, Clips, History, Profile
-    (parent)/               parent: Live, Drives, Clips, Settings
-    drive/[id].tsx          a finished trip, shared by both roles
-    live/[id].tsx           a trip in progress, for the parent
-  components/
-    landing/                the web landing page
-    maps/                   route and pin maps, with .web.tsx twins
-    ui/                     Screen, Card, Stat, Button, ScoreBadge…
-  lib/
-    use-drive-tracker.ts    live GPS recording — the heart of the app
-    use-dashcam.ts          the rolling camera buffer
-    use-audio-monitor.ts    the cabin loudness meter
-    scoring.ts              the safety score
-    speed-limits.ts         real limits, from OpenStreetMap
-    session.tsx             who is signed in and what they are allowed to see
-  types/drive.ts            domain types, mirroring the SQL schema
+  app/          screens, routed by file path
+  components/   shared UI, plus .web.tsx versions for the browser
+  lib/          drive tracking, dashcam, scoring, speed limits, session
+  types/        domain types, mirroring the SQL schema
 ```
 
-Files ending `.web.tsx` replace their neighbour in a browser. That is how one
-codebase runs a phone app and a dashboard without either one compromising for
-the other — see [docs/web-dashboard.md](./docs/web-dashboard.md).
+Files ending in `.web.tsx` replace their neighbour when the app runs in a browser.
+That is how one codebase serves both a phone app and a dashboard. See
+[docs/web-dashboard.md](./docs/web-dashboard.md).
 
-## Decisions worth knowing
+A few decisions worth knowing before changing things:
 
-**One app, not two.** A single binary with a role gate. Two apps would double the
-review surface and make the demo twice as long.
+* **One app, two interfaces.** A role gate at startup decides which one you get.
+* **The driver sees everything the parent sees.** This is a constraint, not a
+  feature, and it is why the microphone is a meter rather than a recorder.
+* **Distances are stored in metres and shown in miles.** Conversion happens in
+  `lib/format.ts`, at the edge.
+* **Green, amber and red mean a safety judgement.** Nothing decorative uses them.
 
-**The driver sees everything the parent sees.** Not a feature — a constraint. It
-is what separates this from spyware, and it is why the microphone is a loudness
-meter rather than a recorder.
+Some behaviour that will surprise you:
 
-**SI units stored, imperial displayed.** Everything persists in metres and
-metres per second; `lib/format.ts` converts at the edge, so the data stays
-portable and the conversions live in one place.
-
-**Safety colours are reserved.** Green, amber and red mean a safety judgement
-and nothing else. Nothing decorative may use them.
-
-## Things that will catch you
-
-**iOS reports `speed: -1`** when it cannot resolve a speed. The tracker maps that
-to `null`; anything reading `speed` has to handle null rather than treat it as
-zero.
-
-**GPS drift while parked** accumulates phantom distance. The tracker ignores
-movement under 4 m and fixes with accuracy worse than 40 m.
-
-**Recording is foreground-only.** A drive stops collecting when the app leaves
-the screen, so backgrounding ends it. Making it survive a locked phone needs
-`expo-task-manager` and a development build.
-
-**Push notifications do not work in Expo Go** — that was removed in SDK 53. The
-parent's live dashboard is the path that demonstrates today.
-
-## Checks
+* iOS reports `speed: -1` when it cannot work out a speed. The tracker turns that
+  into `null`, so do not treat it as zero.
+* GPS drifts while parked, which adds distance that never happened. The tracker
+  ignores movement under 4 m and fixes less accurate than 40 m.
+* Recording only runs while the app is on screen. Backgrounding the app ends the
+  drive.
+* Push notifications do not work in Expo Go at all. The parent's live dashboard is
+  what to demonstrate.
 
 ```bash
-npm run typecheck       # tsc --noEmit
-npm run lint            # expo lint
-npm run simulate        # drive the scoring engine down synthetic roads
-npm run check-limits    # speed-limit matching, against real OSM data
-npm run build:web       # the dashboard, as it deploys
+npm run typecheck      # types
+npm run lint           # linting
+npm run simulate       # run the scoring engine down synthetic roads
+npm run check-limits   # speed-limit matching, against real map data
+npm run build:web      # build the dashboard the way it deploys
 ```
 
-## The rest of the documentation
+## More documentation
 
 | | |
 | --- | --- |
-| [SCORING.md](./SCORING.md) | how a drive is scored, and what was deliberately removed |
-| [docs/web-dashboard.md](./docs/web-dashboard.md) | why the browser build diverges from the phone |
-| [docs/deploy.md](./docs/deploy.md) | shipping the dashboard |
-| [docs/privacy-policy.md](./docs/privacy-policy.md) | the policy, written for hosting |
+| [SCORING.md](./SCORING.md) | how a drive is scored, and what was left out on purpose |
+| [docs/web-dashboard.md](./docs/web-dashboard.md) | why the browser build differs from the phone |
+| [docs/deploy.md](./docs/deploy.md) | deploying the dashboard |
+| [docs/privacy-policy.md](./docs/privacy-policy.md) | what is collected, and what is not |
